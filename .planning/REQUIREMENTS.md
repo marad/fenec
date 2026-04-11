@@ -22,15 +22,15 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Tool System
 
-- [ ] **TOOL-01**: Agent calls tools using structured function calling format and receives results
-- [ ] **TOOL-02**: Available tools (built-in + Lua) are injected into the system prompt each turn
-- [ ] **TOOL-03**: Tool execution errors are returned to the model as structured error messages
+- [x] **TOOL-01**: Agent calls tools using structured function calling format and receives results
+- [x] **TOOL-02**: Available tools (built-in + Lua) are injected into the system prompt each turn
+- [x] **TOOL-03**: Tool execution errors are returned to the model as structured error messages
 
 ### Execution
 
-- [ ] **EXEC-01**: Agent can execute bash/shell commands and return stdout, stderr, and exit code
-- [ ] **EXEC-02**: Dangerous operations (rm, sudo, writes) require user approval before execution
-- [ ] **EXEC-03**: Shell commands have configurable timeout to prevent hangs
+- [x] **EXEC-01**: Agent can execute bash/shell commands and return stdout, stderr, and exit code
+- [x] **EXEC-02**: Dangerous operations (rm, sudo, writes) require user approval before execution
+- [x] **EXEC-03**: Shell commands have configurable timeout to prevent hangs
 
 ### Lua Extensibility
 
@@ -85,12 +85,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CHAT-05 | Phase 1 | Complete |
 | SESS-01 | Phase 2 | Complete |
 | SESS-02 | Phase 2 | Complete |
-| TOOL-01 | Phase 3 | Pending |
-| TOOL-02 | Phase 3 | Pending |
-| TOOL-03 | Phase 3 | Pending |
-| EXEC-01 | Phase 3 | Pending |
-| EXEC-02 | Phase 3 | Pending |
-| EXEC-03 | Phase 3 | Pending |
+| TOOL-01 | Phase 3 | Complete |
+| TOOL-02 | Phase 3 | Complete |
+| TOOL-03 | Phase 3 | Complete |
+| EXEC-01 | Phase 3 | Complete |
+| EXEC-02 | Phase 3 | Complete |
+| EXEC-03 | Phase 3 | Complete |
 | LUA-01 | Phase 5 | Pending |
 | LUA-02 | Phase 4 | Pending |
 | LUA-03 | Phase 5 | Pending |

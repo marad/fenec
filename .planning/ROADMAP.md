@@ -64,7 +64,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Tool registry interface, shell_exec tool with timeout, dangerous command safety gates
+- [x] 03-01-PLAN.md — Tool registry interface, shell_exec tool with timeout, dangerous command safety gates
 - [ ] 03-02-PLAN.md — StreamChat tool call support, agentic loop in REPL, main.go wiring
 
 ### Phase 4: Lua Runtime
