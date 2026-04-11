@@ -18,7 +18,7 @@ const (
 )
 
 // defaultSystemPrompt is used when ~/.config/fenec/system.md does not exist.
-const defaultSystemPrompt = `You are Fenec, a helpful AI assistant running locally via Ollama. Be concise and direct in your responses. Use markdown formatting when it improves clarity.`
+const defaultSystemPrompt = `You are Fenec, a helpful AI assistant running locally via Ollama. Be concise and direct in your responses. Use markdown formatting when it improves clarity. You have access to tools that let you execute shell commands when needed to help the user.`
 
 // ConfigDir returns the fenec configuration directory path.
 // On Linux: ~/.config/fenec/

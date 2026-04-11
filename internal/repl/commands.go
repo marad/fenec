@@ -44,4 +44,8 @@ const helpText = `Available commands:
 Shortcuts:
   Ctrl+C  - Cancel active generation, or clear current input
   Ctrl+D  - Exit fenec
-  \       - Continue input on next line (at end of line)`
+  \       - Continue input on next line (at end of line)
+
+Tools:
+  The agent can use tools to execute actions. Dangerous commands
+  (rm, sudo, chmod, etc.) will prompt for your approval.`

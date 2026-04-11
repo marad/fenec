@@ -12,6 +12,7 @@ import (
 	"github.com/marad/fenec/internal/render"
 	"github.com/marad/fenec/internal/repl"
 	"github.com/marad/fenec/internal/session"
+	"github.com/marad/fenec/internal/tool"
 )
 
 func main() {
@@ -78,14 +79,32 @@ func main() {
 	}
 	store := session.NewStore(sessDir)
 
+	// Create tool registry with shell_exec tool.
+	registry := tool.NewRegistry()
+
+	// Create approval function that will be set after REPL creation.
+	// We need the REPL instance for readline access, so use a closure.
+	var approver tool.ApproverFunc
+
+	shellTool := tool.NewShellTool(30*time.Second, func(command string) bool {
+		if approver != nil {
+			return approver(command)
+		}
+		return false
+	})
+	registry.Register(shellTool)
+
 	// Create and run REPL.
-	r, err := repl.NewREPL(client, defaultModel, systemPrompt, tracker, store)
+	r, err := repl.NewREPL(client, defaultModel, systemPrompt, tracker, store, registry)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, render.FormatError(
 			fmt.Sprintf("Failed to start REPL: %v", err)))
 		os.Exit(1)
 	}
 	defer r.Close()
+
+	// Wire the approval function now that REPL is created.
+	approver = r.ApproveCommand
 
 	// Check for auto-saved session.
 	if _, autoErr := store.LoadAutoSave(); autoErr == nil {

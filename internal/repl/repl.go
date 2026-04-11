@@ -12,11 +12,13 @@ import (
 	"time"
 
 	"github.com/chzyer/readline"
+	"github.com/ollama/ollama/api"
 
 	"github.com/marad/fenec/internal/chat"
 	"github.com/marad/fenec/internal/config"
 	"github.com/marad/fenec/internal/render"
 	"github.com/marad/fenec/internal/session"
+	"github.com/marad/fenec/internal/tool"
 )
 
 // REPL manages the interactive chat loop.
@@ -32,10 +34,11 @@ type REPL struct {
 	store     *session.Store       // Session persistence
 	session   *session.Session     // Current session
 	autoSaved sync.Once            // Ensures auto-save runs only once
+	registry  *tool.Registry       // Tool registry for agentic loop
 }
 
 // NewREPL creates a REPL connected to the given chat service.
-func NewREPL(client chat.ChatService, model string, systemPrompt string, tracker *chat.ContextTracker, store *session.Store) (*REPL, error) {
+func NewREPL(client chat.ChatService, model string, systemPrompt string, tracker *chat.ContextTracker, store *session.Store, registry *tool.Registry) (*REPL, error) {
 	historyFile, err := config.HistoryFile()
 	if err != nil {
 		// Non-fatal: proceed without history.
@@ -52,6 +55,14 @@ func NewREPL(client chat.ChatService, model string, systemPrompt string, tracker
 		return nil, fmt.Errorf("creating readline: %w", err)
 	}
 
+	// Append tool descriptions to system prompt so the model knows what tools are available.
+	if registry != nil {
+		toolDesc := registry.Describe()
+		if toolDesc != "" {
+			systemPrompt = systemPrompt + "\n\n## Available Tools\n\n" + toolDesc
+		}
+	}
+
 	conv := chat.NewConversation(model, systemPrompt)
 
 	// Set context length from tracker if available.
@@ -62,13 +73,14 @@ func NewREPL(client chat.ChatService, model string, systemPrompt string, tracker
 	sess := session.NewSession(model)
 
 	r := &REPL{
-		client:  client,
-		conv:    conv,
-		rl:      rl,
-		sigCh:   make(chan os.Signal, 1),
-		tracker: tracker,
-		store:   store,
-		session: sess,
+		client:   client,
+		conv:     conv,
+		rl:       rl,
+		sigCh:    make(chan os.Signal, 1),
+		tracker:  tracker,
+		store:    store,
+		session:  sess,
+		registry: registry,
 	}
 
 	// Ctrl+C / SIGINT handling (per D-04).
@@ -199,11 +211,14 @@ func isContinuation(line string) bool {
 	return strings.HasSuffix(strings.TrimSpace(line), "\\")
 }
 
+const maxToolRounds = 10
+
 // sendMessage sends user input to the model and handles streaming output.
+// Implements the agentic loop: when the model returns tool calls, dispatch each,
+// feed results back, and re-send until the model responds with text only.
 func (r *REPL) sendMessage(input string) {
 	r.conv.AddUser(input)
 
-	// Create cancellable context for this generation.
 	ctx, cancel := context.WithCancel(context.Background())
 
 	r.mu.Lock()
@@ -219,54 +234,139 @@ func (r *REPL) sendMessage(input string) {
 		cancel()
 	}()
 
-	// Start thinking spinner (per D-05).
+	// Get tool definitions for ChatRequest (nil if no registry).
+	var tools api.Tools
+	if r.registry != nil {
+		tools = r.registry.Tools()
+	}
+
+	for round := 0; round < maxToolRounds; round++ {
+		// Start thinking spinner (per D-05).
+		sp := render.NewSpinner(r.rl.Stdout())
+		sp.Start()
+
+		var content strings.Builder
+		notifier := chat.NewFirstTokenNotifier(func() {
+			sp.Stop()
+		})
+
+		// Stream the response.
+		msg, metrics, err := r.client.StreamChat(ctx, r.conv, tools, func(token string) {
+			notifier.Notify()
+			fmt.Fprint(r.rl.Stdout(), token)
+			content.WriteString(token)
+		})
+
+		sp.Stop()
+
+		if err != nil {
+			if ctx.Err() == context.Canceled {
+				fmt.Fprintln(r.rl.Stdout(), "\n[generation cancelled]")
+				if msg != nil && msg.Content != "" {
+					r.conv.AddAssistant(msg.Content)
+				}
+				return
+			}
+			fmt.Fprintln(r.rl.Stdout(), render.FormatError(err.Error()))
+			return
+		}
+
+		// Check for tool calls.
+		if len(msg.ToolCalls) == 0 {
+			// No tool calls -- final text response.
+			if content.Len() > 0 {
+				r.conv.AddAssistant(content.String())
+			}
+
+			// Update context tracking and handle truncation.
+			if r.tracker != nil && metrics != nil {
+				r.tracker.Update(metrics.PromptEvalCount, metrics.EvalCount)
+				if r.tracker.ShouldTruncate() {
+					removed := r.tracker.TruncateOldest(r.conv)
+					if removed > 0 {
+						fmt.Fprintf(r.rl.Stdout(), "\n[context: dropped %d oldest messages to stay within %d token limit]\n",
+							removed, r.tracker.Available())
+					}
+				}
+			}
+			return
+		}
+
+		// Model made tool calls -- add assistant message (with ToolCalls) to history.
+		r.conv.AddRawMessage(*msg)
+
+		// Execute each tool call.
+		for _, tc := range msg.ToolCalls {
+			// Print tool call indicator.
+			cmdInfo := ""
+			if cmdVal, ok := tc.Function.Arguments.Get("command"); ok {
+				cmdInfo = fmt.Sprintf(" %v", cmdVal)
+			}
+			fmt.Fprintf(r.rl.Stdout(), "\n[tool: %s]%s\n", tc.Function.Name, cmdInfo)
+
+			result, err := r.registry.Dispatch(ctx, tc)
+			if err != nil {
+				result = fmt.Sprintf(`{"error": %q}`, err.Error())
+			}
+
+			// Print brief result indicator.
+			fmt.Fprintf(r.rl.Stdout(), "[result: %d bytes]\n", len(result))
+
+			// Add tool result to conversation.
+			r.conv.AddToolResult(tc.ID, result)
+		}
+
+		// Update context tracking after tool round.
+		if r.tracker != nil && metrics != nil {
+			r.tracker.Update(metrics.PromptEvalCount, metrics.EvalCount)
+		}
+
+		// Loop back for next round.
+	}
+
+	// If we hit max rounds, force a text response by omitting tools.
+	fmt.Fprintf(r.rl.Stdout(), "\n[max tool rounds (%d) reached, requesting summary]\n", maxToolRounds)
+	r.conv.AddUser("Please summarize what you've done so far. Do not make any more tool calls.")
+
 	sp := render.NewSpinner(r.rl.Stdout())
 	sp.Start()
-
-	// Use FirstTokenNotifier to stop spinner on first token.
 	var content strings.Builder
-	notifier := chat.NewFirstTokenNotifier(func() {
-		sp.Stop()
-	})
+	notifier := chat.NewFirstTokenNotifier(func() { sp.Stop() })
 
-	// Stream the response — tokens print directly as they arrive.
-	msg, metrics, err := r.client.StreamChat(ctx, r.conv, func(token string) {
+	msg, _, err := r.client.StreamChat(ctx, r.conv, nil, func(token string) {
 		notifier.Notify()
 		fmt.Fprint(r.rl.Stdout(), token)
 		content.WriteString(token)
 	})
-
-	// Ensure spinner is stopped (in case no tokens arrived).
 	sp.Stop()
 
 	if err != nil {
-		if ctx.Err() == context.Canceled {
-			fmt.Fprintln(r.rl.Stdout(), "\n[generation cancelled]")
-			if msg != nil && msg.Content != "" {
-				r.conv.AddAssistant(msg.Content)
-			}
-			return
-		}
 		fmt.Fprintln(r.rl.Stdout(), render.FormatError(err.Error()))
 		return
 	}
-
 	if content.Len() > 0 {
 		r.conv.AddAssistant(content.String())
 	}
+	_ = msg
+}
 
-	// Update context tracking and handle truncation.
-	if r.tracker != nil && metrics != nil {
-		r.tracker.Update(metrics.PromptEvalCount, metrics.EvalCount)
+// ApproveCommand prompts the user for Y/n confirmation of a dangerous command.
+// Returns true if approved, false if denied.
+func (r *REPL) ApproveCommand(command string) bool {
+	fmt.Fprintf(r.rl.Stdout(), "[dangerous command] %s\n", command)
 
-		if r.tracker.ShouldTruncate() {
-			removed := r.tracker.TruncateOldest(r.conv)
-			if removed > 0 {
-				fmt.Fprintf(r.rl.Stdout(), "\n[context: dropped %d oldest messages to stay within %d token limit]\n",
-					removed, r.tracker.Available())
-			}
-		}
+	origPrompt := r.rl.Config.Prompt
+	r.rl.SetPrompt("Allow? [y/N]: ")
+
+	response, err := r.rl.Readline()
+	r.rl.SetPrompt(origPrompt)
+
+	if err != nil {
+		return false
 	}
+
+	response = strings.TrimSpace(strings.ToLower(response))
+	return response == "y" || response == "yes"
 }
 
 // handleModelCommand implements the /model interactive selection (per D-09, D-10).
