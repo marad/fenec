@@ -14,6 +14,8 @@ An extensible AI agent platform that can grow its own capabilities through self-
 
 - [x] CLI chat interface — basic REPL for conversing with the agent (Validated in Phase 1: Foundation)
 - [x] Ollama integration — connect to local models, send messages, stream responses (Validated in Phase 1: Foundation)
+- [x] Multi-turn conversation — context maintained across turns, token tracking with auto-truncation (Validated in Phase 2: Conversation)
+- [x] Session persistence — save/load conversations to disk, auto-save on exit (Validated in Phase 2: Conversation)
 
 ### Active
 - [ ] Tool system — model receives available tools in prompt, outputs structured tool calls
@@ -73,4 +75,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-11 after Phase 1 completion*
+*Last updated: 2026-04-11 after Phase 2 completion*
