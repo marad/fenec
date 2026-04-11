@@ -9,10 +9,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Chat
 
-- [ ] **CHAT-01**: User can send messages and receive streaming responses token-by-token
+- [x] **CHAT-01**: User can send messages and receive streaming responses token-by-token
 - [ ] **CHAT-02**: Agent maintains multi-turn conversation context across messages
 - [ ] **CHAT-03**: Agent manages context window -- tracks token usage and truncates when approaching model limits
-- [ ] **CHAT-04**: User can select which Ollama model to use (CLI flag or runtime command)
+- [x] **CHAT-04**: User can select which Ollama model to use (CLI flag or runtime command)
 - [x] **CHAT-05**: Model responses render with markdown formatting and syntax-highlighted code blocks
 
 ### Session
@@ -78,10 +78,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CHAT-01 | Phase 1 | Pending |
+| CHAT-01 | Phase 1 | Complete |
 | CHAT-02 | Phase 2 | Pending |
 | CHAT-03 | Phase 2 | Pending |
-| CHAT-04 | Phase 1 | Pending |
+| CHAT-04 | Phase 1 | Complete |
 | CHAT-05 | Phase 1 | Complete |
 | SESS-01 | Phase 2 | Pending |
 | SESS-02 | Phase 2 | Pending |
