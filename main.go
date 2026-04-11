@@ -4,11 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
 	"github.com/marad/fenec/internal/chat"
 	"github.com/marad/fenec/internal/config"
+	feneclua "github.com/marad/fenec/internal/lua"
 	"github.com/marad/fenec/internal/render"
 	"github.com/marad/fenec/internal/repl"
 	"github.com/marad/fenec/internal/session"
@@ -93,6 +95,30 @@ func main() {
 		return false
 	})
 	registry.Register(shellTool)
+
+	// Load Lua tools from tools directory.
+	toolsDir, err := config.ToolsDir()
+	if err != nil {
+		slog.Warn("failed to resolve tools directory", "error", err)
+	} else {
+		result, err := feneclua.LoadTools(toolsDir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, render.FormatError(
+				fmt.Sprintf("Failed to scan tools directory: %v", err)))
+			// Non-fatal: continue without Lua tools.
+		} else {
+			for _, t := range result.Tools {
+				registry.Register(t)
+			}
+			if len(result.Tools) > 0 {
+				slog.Info("loaded Lua tools", "count", len(result.Tools))
+			}
+			for _, e := range result.Errors {
+				fmt.Fprintln(os.Stderr, render.FormatError(
+					fmt.Sprintf("Lua tool load error: %s", e.Error())))
+			}
+		}
+	}
 
 	// Create and run REPL.
 	r, err := repl.NewREPL(client, defaultModel, systemPrompt, tracker, store, registry)
