@@ -12,12 +12,10 @@ An extensible AI agent platform that can grow its own capabilities through self-
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] CLI chat interface — basic REPL for conversing with the agent (Validated in Phase 1: Foundation)
+- [x] Ollama integration — connect to local models, send messages, stream responses (Validated in Phase 1: Foundation)
 
 ### Active
-
-- [ ] CLI chat interface — basic REPL for conversing with the agent
-- [ ] Ollama integration — connect to local models, send messages, stream responses
 - [ ] Tool system — model receives available tools in prompt, outputs structured tool calls
 - [ ] Tool execution engine — parse tool calls from model output, dispatch to handlers, return results
 - [ ] Built-in bash tool — execute shell commands and return output
@@ -75,4 +73,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-11 after initialization*
+*Last updated: 2026-04-11 after Phase 1 completion*
