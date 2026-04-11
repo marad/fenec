@@ -79,7 +79,7 @@ Plans:
 
 Plans:
 - [x] 04-01-PLAN.md — Sandboxed Lua VM, Go-Lua value conversion, LuaTool implementing tool.Tool interface
-- [ ] 04-02-PLAN.md — Lua tool loader with error reporting, ToolsDir config, main.go startup wiring
+- [x] 04-02-PLAN.md — Lua tool loader with error reporting, ToolsDir config, main.go startup wiring
 
 ### Phase 5: Self-Extension
 **Goal**: The agent can author new Lua tools that persist, validate, and become immediately usable -- the platform grows its own capabilities

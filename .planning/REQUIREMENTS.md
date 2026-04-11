@@ -39,7 +39,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **LUA-03**: New Lua tools become available immediately within the current session (hot-reload)
 - [x] **LUA-04**: Lua execution is sandboxed -- no direct access to os, io, or debug modules
 - [ ] **LUA-05**: Lua tools are validated (syntax + schema) before persisting
-- [ ] **LUA-06**: Broken Lua tools are detected and reported, not silently loaded
+- [x] **LUA-06**: Broken Lua tools are detected and reported, not silently loaded
 
 ## v2 Requirements
 
@@ -96,7 +96,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LUA-03 | Phase 5 | Pending |
 | LUA-04 | Phase 4 | Complete |
 | LUA-05 | Phase 5 | Pending |
-| LUA-06 | Phase 4 | Pending |
+| LUA-06 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 19 total
