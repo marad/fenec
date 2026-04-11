@@ -75,11 +75,11 @@ Plans:
   1. Lua tools placed in the tools directory are loaded on startup and appear in the system prompt alongside built-in tools
   2. Lua execution is sandboxed -- scripts cannot access os, io, or debug modules directly
   3. Broken or malformed Lua tools are detected on load and reported to the user, not silently registered
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [ ] 04-01-PLAN.md — Sandboxed Lua VM, Go-Lua value conversion, LuaTool implementing tool.Tool interface
+- [ ] 04-02-PLAN.md — Lua tool loader with error reporting, ToolsDir config, main.go startup wiring
 
 ### Phase 5: Self-Extension
 **Goal**: The agent can author new Lua tools that persist, validate, and become immediately usable -- the platform grows its own capabilities
@@ -105,5 +105,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Foundation | 3/3 | Complete | 2026-04-11 |
 | 2. Conversation | 3/3 | Complete   | 2026-04-11 |
 | 3. Tool Execution | 0/2 | Planning complete | - |
-| 4. Lua Runtime | 0/0 | Not started | - |
+| 4. Lua Runtime | 0/2 | Planning complete | - |
 | 5. Self-Extension | 0/0 | Not started | - |
