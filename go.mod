@@ -6,8 +6,10 @@ require (
 	charm.land/glamour/v2 v2.0.0
 	charm.land/lipgloss/v2 v2.0.2
 	github.com/briandowns/spinner v1.23.2
+	github.com/chzyer/readline v1.5.1
 	github.com/ollama/ollama v0.20.5
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/term v0.42.0
 )
 
 require (
@@ -45,8 +47,7 @@ require (
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/net v0.46.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/term v0.36.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
