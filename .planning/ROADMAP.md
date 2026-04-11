@@ -78,7 +78,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Sandboxed Lua VM, Go-Lua value conversion, LuaTool implementing tool.Tool interface
+- [x] 04-01-PLAN.md — Sandboxed Lua VM, Go-Lua value conversion, LuaTool implementing tool.Tool interface
 - [ ] 04-02-PLAN.md — Lua tool loader with error reporting, ToolsDir config, main.go startup wiring
 
 ### Phase 5: Self-Extension
