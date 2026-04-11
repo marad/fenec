@@ -3,10 +3,22 @@ package tool
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/ollama/ollama/api"
 )
+
+// ToolEventNotifier is called when a tool is created, updated, or deleted.
+// event is one of "created", "updated", "deleted".
+type ToolEventNotifier func(event string, toolName string, description string)
+
+// ToolInfoEntry describes a registered tool for listing/inspection.
+type ToolInfoEntry struct {
+	Name        string
+	Description string
+	BuiltIn     bool
+}
 
 // Tool defines the interface that all tools (built-in and Lua) must implement.
 // This is the extension point for Phase 4 Lua tools.
@@ -22,20 +34,67 @@ type Tool interface {
 }
 
 // Registry holds registered tools and dispatches tool calls by name.
+// It tracks provenance (built-in vs Lua) for each tool.
 type Registry struct {
-	tools map[string]Tool
+	tools   map[string]Tool
+	builtIn map[string]bool
 }
 
 // NewRegistry creates an empty tool registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		tools: make(map[string]Tool),
+		tools:   make(map[string]Tool),
+		builtIn: make(map[string]bool),
 	}
 }
 
-// Register adds a tool to the registry, keyed by its Name().
+// Register adds a built-in tool to the registry, keyed by its Name().
+// Built-in tools are protected from deletion and overwrite by Lua tools.
 func (r *Registry) Register(t Tool) {
 	r.tools[t.Name()] = t
+	r.builtIn[t.Name()] = true
+}
+
+// RegisterLua adds a Lua tool to the registry without marking it as built-in.
+func (r *Registry) RegisterLua(t Tool) {
+	r.tools[t.Name()] = t
+}
+
+// Unregister removes a tool from the registry by name.
+// Returns true if the tool was found and removed, false if it did not exist.
+func (r *Registry) Unregister(name string) bool {
+	_, ok := r.tools[name]
+	if ok {
+		delete(r.tools, name)
+		delete(r.builtIn, name)
+	}
+	return ok
+}
+
+// Has reports whether a tool with the given name is registered.
+func (r *Registry) Has(name string) bool {
+	_, ok := r.tools[name]
+	return ok
+}
+
+// IsBuiltIn reports whether the named tool was registered as a built-in (via Register).
+func (r *Registry) IsBuiltIn(name string) bool {
+	return r.builtIn[name]
+}
+
+// ToolInfo returns a sorted slice describing all registered tools.
+func (r *Registry) ToolInfo() []ToolInfoEntry {
+	entries := make([]ToolInfoEntry, 0, len(r.tools))
+	for _, t := range r.tools {
+		def := t.Definition()
+		entries = append(entries, ToolInfoEntry{
+			Name:        def.Function.Name,
+			Description: def.Function.Description,
+			BuiltIn:     r.builtIn[def.Function.Name],
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+	return entries
 }
 
 // Tools returns the Ollama API tool definitions for all registered tools.
