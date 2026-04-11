@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-04-11T11:51:59.795Z"
+stopped_at: Completed 02-03-PLAN.md
+last_updated: "2026-04-11T13:24:20.951Z"
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -50,6 +50,7 @@ Plan: 3 of 3
 | Phase 01-foundation P01 | 4min | 3 tasks | 10 files |
 | Phase 02 P02 | 3min | 2 tasks | 6 files |
 | Phase 02-01 P01 | 4min | 2 tasks | 7 files |
+| Phase 02-conversation P03 | 5min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,8 @@ Recent decisions affecting current work:
 - [Phase 02-01]: Conservative 4096 fallback when Show API fails or context_length key missing
 - [Phase 02-01]: Proportional token estimation in TruncateOldest rather than per-message counting
 - [Phase 02-01]: Pair-based removal (user+assistant) in truncation to maintain conversation coherence
+- [Phase 02-conversation]: Auto-save uses sync.Once to deduplicate between Run() defer and Close() exit paths
+- [Phase 02-conversation]: Startup auto-save check is informational only -- user must /load explicitly
 
 ### Pending Todos
 
@@ -83,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-11T11:51:59.792Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-04-11T13:24:20.949Z
+Stopped at: Completed 02-03-PLAN.md
 Resume file: None

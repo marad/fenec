@@ -13,7 +13,7 @@ Fenec delivers a self-extending AI agent platform in five phases. Foundation est
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Foundation** - Streaming chat with a local Ollama model, formatted output, model selection
-- [ ] **Phase 2: Conversation** - Multi-turn context management and persistent sessions
+- [x] **Phase 2: Conversation** - Multi-turn context management and persistent sessions (completed 2026-04-11)
 - [ ] **Phase 3: Tool Execution** - Structured tool calling, bash command execution, and safety gates
 - [ ] **Phase 4: Lua Runtime** - Sandboxed Lua scripting engine that loads tools from disk
 - [ ] **Phase 5: Self-Extension** - Agent authors, validates, and hot-reloads its own Lua tools
@@ -49,7 +49,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md — Context window management: StreamChat metrics capture, Show API context length, ContextTracker truncation
 - [x] 02-02-PLAN.md — Session persistence: Session type, file-based Store with atomic writes, auto-save support
-- [ ] 02-03-PLAN.md — REPL integration: /save, /load, /history commands, auto-save on exit, main.go wiring
+- [x] 02-03-PLAN.md — REPL integration: /save, /load, /history commands, auto-save on exit, main.go wiring
 
 ### Phase 3: Tool Execution
 **Goal**: Agent can call tools, execute shell commands, and handle errors -- with human approval for dangerous operations
@@ -103,7 +103,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | 2026-04-11 |
-| 2. Conversation | 0/3 | Planned | - |
+| 2. Conversation | 3/3 | Complete   | 2026-04-11 |
 | 3. Tool Execution | 0/0 | Not started | - |
 | 4. Lua Runtime | 0/0 | Not started | - |
 | 5. Self-Extension | 0/0 | Not started | - |
