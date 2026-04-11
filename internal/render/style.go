@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"strconv"
 
 	"charm.land/lipgloss/v2"
 )
@@ -19,6 +20,10 @@ var (
 	errorStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FF5555")).
 		Bold(true)
+
+	// toolEventStyle styles tool lifecycle event banners.
+	toolEventStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#7AA2F7"))
 )
 
 // FormatPrompt returns the readline prompt string: [modelName]>
@@ -37,4 +42,19 @@ func FormatBanner(version string) string {
 // FormatError returns a styled error message.
 func FormatError(msg string) string {
 	return errorStyle.Render("Error: ") + msg
+}
+
+// FormatToolEvent returns a styled banner for tool lifecycle events.
+// event is one of "created", "updated", "deleted".
+func FormatToolEvent(event, name, desc string) string {
+	switch event {
+	case "created":
+		return toolEventStyle.Render("New tool registered: "+name) + " -- " + strconv.Quote(desc)
+	case "updated":
+		return toolEventStyle.Render("Tool updated: "+name) + " -- " + strconv.Quote(desc)
+	case "deleted":
+		return toolEventStyle.Render("Tool removed: " + name)
+	default:
+		return ""
+	}
 }

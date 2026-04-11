@@ -34,7 +34,8 @@ type REPL struct {
 	store     *session.Store       // Session persistence
 	session   *session.Session     // Current session
 	autoSaved sync.Once            // Ensures auto-save runs only once
-	registry  *tool.Registry       // Tool registry for agentic loop
+	registry        *tool.Registry // Tool registry for agentic loop
+	baseSystemPrompt string        // System prompt before tool descriptions (for refresh)
 }
 
 // NewREPL creates a REPL connected to the given chat service.
@@ -55,6 +56,10 @@ func NewREPL(client chat.ChatService, model string, systemPrompt string, tracker
 		return nil, fmt.Errorf("creating readline: %w", err)
 	}
 
+	// Store base system prompt before tool descriptions are appended.
+	// Needed for refreshSystemPrompt after hot-reload events.
+	basePrompt := systemPrompt
+
 	// Append tool descriptions to system prompt so the model knows what tools are available.
 	if registry != nil {
 		toolDesc := registry.Describe()
@@ -73,14 +78,15 @@ func NewREPL(client chat.ChatService, model string, systemPrompt string, tracker
 	sess := session.NewSession(model)
 
 	r := &REPL{
-		client:   client,
-		conv:     conv,
-		rl:       rl,
-		sigCh:    make(chan os.Signal, 1),
-		tracker:  tracker,
-		store:    store,
-		session:  sess,
-		registry: registry,
+		client:           client,
+		conv:             conv,
+		rl:               rl,
+		sigCh:            make(chan os.Signal, 1),
+		tracker:          tracker,
+		store:            store,
+		session:          sess,
+		registry:         registry,
+		baseSystemPrompt: basePrompt,
 	}
 
 	// Ctrl+C / SIGINT handling (per D-04).
@@ -150,6 +156,8 @@ func (r *REPL) Run() error {
 				r.handleLoadCommand()
 			case "/history":
 				r.handleHistoryCommand()
+			case "/tools":
+				r.handleToolsCommand()
 			default:
 				fmt.Fprintf(r.rl.Stdout(), "Unknown command: %s. Type /help for available commands.\n", cmd.Name)
 			}
@@ -549,4 +557,47 @@ func (r *REPL) handleHistoryCommand() {
 			float64(r.tracker.TokenUsage())/float64(r.tracker.Available())*100)
 	}
 	fmt.Fprintf(r.rl.Stdout(), "Session: %s\n", r.session.ID)
+}
+
+// handleToolsCommand lists all registered tools with provenance tags and descriptions.
+func (r *REPL) handleToolsCommand() {
+	if r.registry == nil {
+		fmt.Fprintln(r.rl.Stdout(), "No tool registry available.")
+		return
+	}
+	info := r.registry.ToolInfo()
+	if len(info) == 0 {
+		fmt.Fprintln(r.rl.Stdout(), "No tools loaded.")
+		return
+	}
+	for _, t := range info {
+		tag := "[lua]"
+		if t.BuiltIn {
+			tag = "[built-in]"
+		}
+		fmt.Fprintf(r.rl.Stdout(), "  %-10s %s -- %s\n", tag, t.Name, t.Description)
+	}
+}
+
+// refreshSystemPrompt rebuilds the system prompt message in the conversation
+// with current tool descriptions from the registry. Called after tool lifecycle
+// events so the model sees updated tools on the next turn.
+func (r *REPL) refreshSystemPrompt() {
+	if len(r.conv.Messages) > 0 && r.conv.Messages[0].Role == "system" {
+		prompt := r.baseSystemPrompt
+		if r.registry != nil {
+			toolDesc := r.registry.Describe()
+			if toolDesc != "" {
+				prompt = prompt + "\n\n## Available Tools\n\n" + toolDesc
+			}
+		}
+		r.conv.Messages[0].Content = prompt
+	}
+}
+
+// RefreshSystemPrompt is the exported wrapper for refreshSystemPrompt.
+// Called from the tool event notifier callback in main.go after tool
+// create/update/delete events.
+func (r *REPL) RefreshSystemPrompt() {
+	r.refreshSystemPrompt()
 }

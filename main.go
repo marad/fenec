@@ -108,7 +108,7 @@ func main() {
 			// Non-fatal: continue without Lua tools.
 		} else {
 			for _, t := range result.Tools {
-				registry.Register(t)
+				registry.RegisterLua(t)
 			}
 			if len(result.Tools) > 0 {
 				slog.Info("loaded Lua tools", "count", len(result.Tools))
@@ -120,6 +120,24 @@ func main() {
 		}
 	}
 
+	// Create self-extension tool notifier.
+	// Uses replRef closure to refresh system prompt after REPL creation.
+	var replRef *repl.REPL
+	notifier := func(event, name, desc string) {
+		fmt.Fprintln(os.Stdout, render.FormatToolEvent(event, name, desc))
+		if replRef != nil {
+			replRef.RefreshSystemPrompt()
+		}
+	}
+
+	// Register self-extension tools (built-in, alongside shell_exec).
+	createTool := tool.NewCreateLuaTool(toolsDir, registry, notifier)
+	registry.Register(createTool)
+	updateTool := tool.NewUpdateLuaTool(toolsDir, registry, notifier)
+	registry.Register(updateTool)
+	deleteTool := tool.NewDeleteLuaTool(toolsDir, registry, notifier)
+	registry.Register(deleteTool)
+
 	// Create and run REPL.
 	r, err := repl.NewREPL(client, defaultModel, systemPrompt, tracker, store, registry)
 	if err != nil {
@@ -129,8 +147,9 @@ func main() {
 	}
 	defer r.Close()
 
-	// Wire the approval function now that REPL is created.
+	// Wire the approval function and REPL reference now that REPL is created.
 	approver = r.ApproveCommand
+	replRef = r
 
 	// Check for auto-saved session.
 	if _, autoErr := store.LoadAutoSave(); autoErr == nil {

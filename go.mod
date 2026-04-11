@@ -9,6 +9,8 @@ require (
 	github.com/chzyer/readline v1.5.1
 	github.com/ollama/ollama v0.20.5
 	github.com/stretchr/testify v1.11.1
+	github.com/vadv/gopher-lua-libs v0.8.0
+	github.com/yuin/gopher-lua v1.1.2
 	golang.org/x/term v0.42.0
 )
 
@@ -40,12 +42,10 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/vadv/gopher-lua-libs v0.8.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
 	github.com/yuin/goldmark-emoji v1.0.5 // indirect
-	github.com/yuin/gopher-lua v1.1.2 // indirect
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/net v0.46.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect

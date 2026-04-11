@@ -39,6 +39,7 @@ const helpText = `Available commands:
   /save    - Save current conversation to disk
   /load    - List and load a saved conversation
   /history - Show conversation stats (messages, tokens)
+  /tools   - List all loaded tools with provenance
   /quit    - Exit fenec
 
 Shortcuts:
