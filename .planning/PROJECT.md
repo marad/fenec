@@ -20,10 +20,12 @@ An extensible AI agent platform that can grow its own capabilities through self-
 - [x] Tool execution engine — parse tool calls from model output, dispatch to handlers, return results (Validated in Phase 3: Tool Execution)
 - [x] Built-in bash tool — execute shell commands and return output (Validated in Phase 3: Tool Execution)
 - [x] LuaJIT integration — sandboxed Lua 5.1 VM, LuaTool adapter, startup loader (Validated in Phase 4: Lua Runtime)
+- [x] Self-extension — agent can write new Lua tools that persist to disk and become available in future sessions (Validated in Phase 5: Self-Extension)
+- [x] Tool discovery — agent sees all available tools (built-in + Lua) in its system prompt (Validated in Phase 5: Self-Extension)
 
 ### Active
-- [ ] Self-extension — agent can write new Lua tools that persist to disk and become available in future sessions
-- [ ] Tool discovery — agent sees all available tools (built-in + Lua) in its system prompt
+
+(No active requirements — all v1.0 milestone requirements validated)
 
 ### Out of Scope
 
@@ -75,4 +77,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-11 after Phase 4 completion*
+*Last updated: 2026-04-11 after Phase 5 completion*
