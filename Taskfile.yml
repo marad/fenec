@@ -1,0 +1,32 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Build the fenec binary
+    cmds:
+      - go build -o bin/fenec .
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./...
+
+  test-race:
+    desc: Run tests with race detector and coverage
+    cmds:
+      - go test -race -cover ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run
+
+  run:
+    desc: Run fenec
+    cmds:
+      - go run .
+
+  tidy:
+    desc: Tidy Go module dependencies
+    cmds:
+      - go mod tidy
