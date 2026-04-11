@@ -106,11 +106,10 @@ func TestDeleteLuaToolNotifier(t *testing.T) {
 	_, err := c.Execute(context.Background(), createArgs)
 	require.NoError(t, err)
 
-	var gotEvent, gotName, gotDesc string
+	var gotEvent, gotName string
 	notifier := func(event, name, desc string) {
 		gotEvent = event
 		gotName = name
-		gotDesc = desc
 	}
 
 	d := NewDeleteLuaTool(tmpDir, reg, notifier)

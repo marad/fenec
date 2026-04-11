@@ -5,14 +5,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marad/fenec/internal/tool"
 	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// Compile-time interface compliance check.
-var _ tool.Tool = (*LuaTool)(nil)
+// NOTE: Compile-time interface check (var _ tool.Tool = (*LuaTool)(nil)) was
+// removed to break an import cycle: internal/tool now imports internal/lua for
+// the self-extension tools (create/update/delete). The interface compliance is
+// verified by the tool package tests and by RegisterLua accepting LuaTool.
 
 func loadTestTool(t *testing.T, path string) *LuaTool {
 	t.Helper()
@@ -128,9 +129,14 @@ func TestArgsToLuaTable(t *testing.T) {
 }
 
 func TestLuaToolImplementsInterface(t *testing.T) {
-	// This is a compile-time check via the var _ declaration above.
-	// If LuaTool does not implement tool.Tool, the file won't compile.
-	t.Log("LuaTool implements tool.Tool interface (compile-time check)")
+	// Verify LuaTool has the methods expected by tool.Tool without importing
+	// the tool package (which would create a cycle since tool imports lua).
+	lt := loadTestTool(t, "testdata/word_count.lua")
+	assert.NotEmpty(t, lt.Name())
+	def := lt.Definition()
+	assert.Equal(t, "function", def.Type)
+	_, err := lt.Execute(context.Background(), api.NewToolCallFunctionArguments())
+	assert.NoError(t, err)
 }
 
 // writeFile is a test helper to write content to a file.
