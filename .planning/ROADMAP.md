@@ -123,4 +123,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 Plans:
 - [x] 06-01-PLAN.md — Path safety module, read_file tool, list_directory tool
-- [ ] 06-02-PLAN.md — write_file tool, edit_file tool, main.go registration wiring
+- [x] 06-02-PLAN.md — write_file tool, edit_file tool, main.go registration wiring
