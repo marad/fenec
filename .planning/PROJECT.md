@@ -22,6 +22,7 @@ An extensible AI agent platform that can grow its own capabilities through self-
 - [x] LuaJIT integration — sandboxed Lua 5.1 VM, LuaTool adapter, startup loader (Validated in Phase 4: Lua Runtime)
 - [x] Self-extension — agent can write new Lua tools that persist to disk and become available in future sessions (Validated in Phase 5: Self-Extension)
 - [x] Tool discovery — agent sees all available tools (built-in + Lua) in its system prompt (Validated in Phase 5: Self-Extension)
+- [x] File tools — built-in read_file, write_file, edit_file, list_directory with path safety (Validated in Phase 6: File Tools)
 
 ### Active
 
@@ -77,4 +78,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-11 after Phase 5 completion*
+*Last updated: 2026-04-11 after Phase 6 completion*
