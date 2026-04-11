@@ -4,8 +4,9 @@ import "github.com/ollama/ollama/api"
 
 // Conversation holds the message history for a chat session.
 type Conversation struct {
-	Messages []api.Message
-	Model    string
+	Messages      []api.Message
+	Model         string
+	ContextLength int // Maximum context window size in tokens (0 = not set)
 }
 
 // NewConversation creates a conversation with a system prompt.

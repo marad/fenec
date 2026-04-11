@@ -30,7 +30,7 @@ func TestStreamChatAccumulatesTokens(t *testing.T) {
 	conv := NewConversation("test-model", "You are helpful.")
 	conv.AddUser("Hi")
 
-	msg, err := client.StreamChat(context.Background(), conv, nil)
+	msg, _, err := client.StreamChat(context.Background(), conv, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "assistant", msg.Role)
 	assert.Equal(t, "Hello world", msg.Content)
@@ -57,7 +57,7 @@ func TestStreamChatCallsOnToken(t *testing.T) {
 	conv.AddUser("Hi")
 
 	var received []string
-	msg, err := client.StreamChat(context.Background(), conv, func(token string) {
+	msg, _, err := client.StreamChat(context.Background(), conv, func(token string) {
 		received = append(received, token)
 	})
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestStreamChatSkipsEmptyTokens(t *testing.T) {
 	conv.AddUser("Hi")
 
 	var received []string
-	msg, err := client.StreamChat(context.Background(), conv, func(token string) {
+	msg, _, err := client.StreamChat(context.Background(), conv, func(token string) {
 		received = append(received, token)
 	})
 	require.NoError(t, err)
@@ -104,7 +104,7 @@ func TestStreamChatSendsConversationMessages(t *testing.T) {
 	conv.AddAssistant("Hi there!")
 	conv.AddUser("How are you?")
 
-	_, err := client.StreamChat(context.Background(), conv, nil)
+	_, _, err := client.StreamChat(context.Background(), conv, nil)
 	require.NoError(t, err)
 	require.NotNil(t, capturedReq)
 	assert.Equal(t, "gemma4", capturedReq.Model)
@@ -143,12 +143,14 @@ func TestStreamChatCancellation(t *testing.T) {
 	conv := NewConversation("test-model", "")
 	conv.AddUser("Hi")
 
-	msg, err := client.StreamChat(ctx, conv, nil)
+	msg, metrics, err := client.StreamChat(ctx, conv, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 	// The partial content should still be available
 	assert.NotNil(t, msg)
 	assert.Contains(t, msg.Content, "Hello")
+	// Metrics should be non-nil even on cancellation
+	assert.NotNil(t, metrics)
 }
 
 func TestFirstTokenNotifierCallsOnce(t *testing.T) {
@@ -200,11 +202,97 @@ func TestStreamChatFirstTokenNotifier(t *testing.T) {
 	})
 
 	// Wire the notifier into the onToken callback
-	_, err := client.StreamChat(context.Background(), conv, func(_ string) {
+	_, _, err := client.StreamChat(context.Background(), conv, func(_ string) {
 		notifier.Notify()
 	})
 	require.NoError(t, err)
 
 	// Should have been called exactly once despite 3 tokens
 	assert.Equal(t, int32(1), firstTokenCalled.Load())
+}
+
+func TestStreamChatReturnsMetrics(t *testing.T) {
+	mock := &mockAPI{
+		chatFunc: func(_ context.Context, _ *api.ChatRequest, fn api.ChatResponseFunc) error {
+			// Simulate streaming tokens
+			_ = fn(api.ChatResponse{
+				Message: api.Message{Content: "Hello"},
+			})
+			// Final chunk with Done=true and metrics
+			_ = fn(api.ChatResponse{
+				Message: api.Message{Content: " world"},
+				Done:    true,
+				Metrics: api.Metrics{
+					PromptEvalCount: 42,
+					EvalCount:       10,
+				},
+			})
+			return nil
+		},
+	}
+
+	client := newClientWithAPI(mock)
+	conv := NewConversation("test-model", "")
+	conv.AddUser("Hi")
+
+	msg, metrics, err := client.StreamChat(context.Background(), conv, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "Hello world", msg.Content)
+	require.NotNil(t, metrics)
+	assert.Equal(t, 42, metrics.PromptEvalCount)
+	assert.Equal(t, 10, metrics.EvalCount)
+}
+
+func TestStreamChatSetsTruncateFalseAndNumCtx(t *testing.T) {
+	var capturedReq *api.ChatRequest
+
+	mock := &mockAPI{
+		chatFunc: func(_ context.Context, req *api.ChatRequest, _ api.ChatResponseFunc) error {
+			capturedReq = req
+			return nil
+		},
+	}
+
+	client := newClientWithAPI(mock)
+	conv := NewConversation("test-model", "")
+	conv.ContextLength = 8192
+	conv.AddUser("Hi")
+
+	_, _, err := client.StreamChat(context.Background(), conv, nil)
+	require.NoError(t, err)
+	require.NotNil(t, capturedReq)
+
+	// Truncate should be explicitly false
+	require.NotNil(t, capturedReq.Truncate)
+	assert.False(t, *capturedReq.Truncate)
+
+	// num_ctx should be set from ContextLength
+	require.NotNil(t, capturedReq.Options)
+	assert.Equal(t, 8192, capturedReq.Options["num_ctx"])
+}
+
+func TestStreamChatOmitsNumCtxWhenContextLengthZero(t *testing.T) {
+	var capturedReq *api.ChatRequest
+
+	mock := &mockAPI{
+		chatFunc: func(_ context.Context, req *api.ChatRequest, _ api.ChatResponseFunc) error {
+			capturedReq = req
+			return nil
+		},
+	}
+
+	client := newClientWithAPI(mock)
+	conv := NewConversation("test-model", "")
+	conv.AddUser("Hi")
+
+	_, _, err := client.StreamChat(context.Background(), conv, nil)
+	require.NoError(t, err)
+	require.NotNil(t, capturedReq)
+
+	// Truncate should still be false
+	require.NotNil(t, capturedReq.Truncate)
+	assert.False(t, *capturedReq.Truncate)
+
+	// Options should be nil when ContextLength is 0
+	assert.Nil(t, capturedReq.Options)
 }

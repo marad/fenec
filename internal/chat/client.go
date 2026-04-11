@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/ollama/ollama/api"
 )
@@ -14,7 +15,8 @@ import (
 type ChatService interface {
 	ListModels(ctx context.Context) ([]string, error)
 	Ping(ctx context.Context) error
-	StreamChat(ctx context.Context, conv *Conversation, onToken func(string)) (*api.Message, error)
+	StreamChat(ctx context.Context, conv *Conversation, onToken func(string)) (*api.Message, *api.Metrics, error)
+	GetContextLength(ctx context.Context, model string) (int, error)
 }
 
 // chatAPI is an internal interface for testing the chat logic.
@@ -22,6 +24,7 @@ type ChatService interface {
 type chatAPI interface {
 	Chat(ctx context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error
 	List(ctx context.Context) (*api.ListResponse, error)
+	Show(ctx context.Context, req *api.ShowRequest) (*api.ShowResponse, error)
 }
 
 // Client wraps the Ollama API client.
@@ -81,4 +84,25 @@ func (c *Client) Ping(ctx context.Context) error {
 		return fmt.Errorf("no models installed — pull one with: ollama pull gemma4")
 	}
 	return nil
+}
+
+// GetContextLength queries the model's context window size via the Show API.
+// Returns a conservative fallback of 4096 if the Show API fails or the
+// context_length key is not found in model_info.
+func (c *Client) GetContextLength(ctx context.Context, model string) (int, error) {
+	resp, err := c.api.Show(ctx, &api.ShowRequest{Model: model})
+	if err != nil {
+		return 4096, nil // Conservative fallback
+	}
+	for key, val := range resp.ModelInfo {
+		if strings.HasSuffix(key, ".context_length") {
+			switch v := val.(type) {
+			case float64:
+				return int(v), nil
+			case int:
+				return v, nil
+			}
+		}
+	}
+	return 4096, nil // Fallback if key not found
 }

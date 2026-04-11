@@ -14,6 +14,7 @@ import (
 type mockAPI struct {
 	listFunc func(ctx context.Context) (*api.ListResponse, error)
 	chatFunc func(ctx context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error
+	showFunc func(ctx context.Context, req *api.ShowRequest) (*api.ShowResponse, error)
 }
 
 func (m *mockAPI) List(ctx context.Context) (*api.ListResponse, error) {
@@ -28,6 +29,13 @@ func (m *mockAPI) Chat(ctx context.Context, req *api.ChatRequest, fn api.ChatRes
 		return m.chatFunc(ctx, req, fn)
 	}
 	return nil
+}
+
+func (m *mockAPI) Show(ctx context.Context, req *api.ShowRequest) (*api.ShowResponse, error) {
+	if m.showFunc != nil {
+		return m.showFunc(ctx, req)
+	}
+	return &api.ShowResponse{}, nil
 }
 
 func TestNewClientDefaultHost(t *testing.T) {
@@ -124,4 +132,64 @@ func TestPingConnectionError(t *testing.T) {
 	err := client.Ping(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot connect to Ollama")
+}
+
+func TestGetContextLengthFromModelInfo(t *testing.T) {
+	mock := &mockAPI{
+		showFunc: func(_ context.Context, req *api.ShowRequest) (*api.ShowResponse, error) {
+			assert.Equal(t, "gemma4", req.Model)
+			return &api.ShowResponse{
+				ModelInfo: map[string]any{
+					"general.architecture": "gemma3",
+					"gemma3.context_length": float64(8192),
+				},
+			}, nil
+		},
+	}
+
+	client := newClientWithAPI(mock)
+	length, err := client.GetContextLength(context.Background(), "gemma4")
+	require.NoError(t, err)
+	assert.Equal(t, 8192, length)
+}
+
+func TestGetContextLengthFallbackNoKey(t *testing.T) {
+	mock := &mockAPI{
+		showFunc: func(_ context.Context, _ *api.ShowRequest) (*api.ShowResponse, error) {
+			return &api.ShowResponse{
+				ModelInfo: map[string]any{
+					"general.architecture": "gemma3",
+				},
+			}, nil
+		},
+	}
+
+	client := newClientWithAPI(mock)
+	length, err := client.GetContextLength(context.Background(), "gemma4")
+	require.NoError(t, err)
+	assert.Equal(t, 4096, length)
+}
+
+func TestGetContextLengthFallbackOnError(t *testing.T) {
+	mock := &mockAPI{
+		showFunc: func(_ context.Context, _ *api.ShowRequest) (*api.ShowResponse, error) {
+			return nil, fmt.Errorf("model not found")
+		},
+	}
+
+	client := newClientWithAPI(mock)
+	length, err := client.GetContextLength(context.Background(), "nonexistent")
+	require.NoError(t, err)
+	assert.Equal(t, 4096, length)
+}
+
+func TestConversationContextLengthDefault(t *testing.T) {
+	conv := NewConversation("test-model", "You are helpful.")
+	assert.Equal(t, 0, conv.ContextLength)
+}
+
+func TestConversationContextLengthAccessible(t *testing.T) {
+	conv := NewConversation("test-model", "You are helpful.")
+	conv.ContextLength = 8192
+	assert.Equal(t, 8192, conv.ContextLength)
 }
