@@ -11,7 +11,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **CHAT-01**: User can send messages and receive streaming responses token-by-token
 - [ ] **CHAT-02**: Agent maintains multi-turn conversation context across messages
-- [ ] **CHAT-03**: Agent manages context window — tracks token usage and truncates when approaching model limits
+- [ ] **CHAT-03**: Agent manages context window -- tracks token usage and truncates when approaching model limits
 - [ ] **CHAT-04**: User can select which Ollama model to use (CLI flag or runtime command)
 - [ ] **CHAT-05**: Model responses render with markdown formatting and syntax-highlighted code blocks
 
@@ -37,7 +37,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **LUA-01**: Agent can write new Lua tools that persist to a tools directory on disk
 - [ ] **LUA-02**: Lua tools are loaded on startup and registered alongside built-in tools
 - [ ] **LUA-03**: New Lua tools become available immediately within the current session (hot-reload)
-- [ ] **LUA-04**: Lua execution is sandboxed — no direct access to os, io, or debug modules
+- [ ] **LUA-04**: Lua execution is sandboxed -- no direct access to os, io, or debug modules
 - [ ] **LUA-05**: Lua tools are validated (syntax + schema) before persisting
 - [ ] **LUA-06**: Broken Lua tools are detected and reported, not silently loaded
 
@@ -78,31 +78,31 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CHAT-01 | — | Pending |
-| CHAT-02 | — | Pending |
-| CHAT-03 | — | Pending |
-| CHAT-04 | — | Pending |
-| CHAT-05 | — | Pending |
-| SESS-01 | — | Pending |
-| SESS-02 | — | Pending |
-| TOOL-01 | — | Pending |
-| TOOL-02 | — | Pending |
-| TOOL-03 | — | Pending |
-| EXEC-01 | — | Pending |
-| EXEC-02 | — | Pending |
-| EXEC-03 | — | Pending |
-| LUA-01 | — | Pending |
-| LUA-02 | — | Pending |
-| LUA-03 | — | Pending |
-| LUA-04 | — | Pending |
-| LUA-05 | — | Pending |
-| LUA-06 | — | Pending |
+| CHAT-01 | Phase 1 | Pending |
+| CHAT-02 | Phase 2 | Pending |
+| CHAT-03 | Phase 2 | Pending |
+| CHAT-04 | Phase 1 | Pending |
+| CHAT-05 | Phase 1 | Pending |
+| SESS-01 | Phase 2 | Pending |
+| SESS-02 | Phase 2 | Pending |
+| TOOL-01 | Phase 3 | Pending |
+| TOOL-02 | Phase 3 | Pending |
+| TOOL-03 | Phase 3 | Pending |
+| EXEC-01 | Phase 3 | Pending |
+| EXEC-02 | Phase 3 | Pending |
+| EXEC-03 | Phase 3 | Pending |
+| LUA-01 | Phase 5 | Pending |
+| LUA-02 | Phase 4 | Pending |
+| LUA-03 | Phase 5 | Pending |
+| LUA-04 | Phase 4 | Pending |
+| LUA-05 | Phase 5 | Pending |
+| LUA-06 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 19 total
-- Mapped to phases: 0
-- Unmapped: 19
+- Mapped to phases: 19
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-11*
-*Last updated: 2026-04-11 after initial definition*
+*Last updated: 2026-04-11 after roadmap creation*
