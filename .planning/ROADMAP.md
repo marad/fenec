@@ -89,11 +89,11 @@ Plans:
   1. Agent can write a new Lua tool that is saved to the tools directory and persists across sessions
   2. Newly written Lua tools are validated (syntax check + schema check) before being persisted -- invalid tools are rejected with a clear error
   3. New Lua tools become available immediately in the current session without restart (hot-reload)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 05-01-PLAN.md — Registry extensions (Unregister, provenance) + create/update/delete built-in tools with validation
+- [ ] 05-02-PLAN.md — REPL integration: /tools command, banner notifications, system prompt refresh, main.go wiring
 
 ## Progress
 
@@ -106,4 +106,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. Conversation | 3/3 | Complete   | 2026-04-11 |
 | 3. Tool Execution | 0/2 | Planning complete | - |
 | 4. Lua Runtime | 0/2 | Planning complete | - |
-| 5. Self-Extension | 0/0 | Not started | - |
+| 5. Self-Extension | 0/2 | Planning complete | - |
