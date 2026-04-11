@@ -34,11 +34,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Lua Extensibility
 
-- [ ] **LUA-01**: Agent can write new Lua tools that persist to a tools directory on disk
+- [x] **LUA-01**: Agent can write new Lua tools that persist to a tools directory on disk
 - [x] **LUA-02**: Lua tools are loaded on startup and registered alongside built-in tools
 - [ ] **LUA-03**: New Lua tools become available immediately within the current session (hot-reload)
 - [x] **LUA-04**: Lua execution is sandboxed -- no direct access to os, io, or debug modules
-- [ ] **LUA-05**: Lua tools are validated (syntax + schema) before persisting
+- [x] **LUA-05**: Lua tools are validated (syntax + schema) before persisting
 - [x] **LUA-06**: Broken Lua tools are detected and reported, not silently loaded
 
 ## v2 Requirements
@@ -91,11 +91,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXEC-01 | Phase 3 | Complete |
 | EXEC-02 | Phase 3 | Complete |
 | EXEC-03 | Phase 3 | Complete |
-| LUA-01 | Phase 5 | Pending |
+| LUA-01 | Phase 5 | Complete |
 | LUA-02 | Phase 4 | Complete |
 | LUA-03 | Phase 5 | Pending |
 | LUA-04 | Phase 4 | Complete |
-| LUA-05 | Phase 5 | Pending |
+| LUA-05 | Phase 5 | Complete |
 | LUA-06 | Phase 4 | Complete |
 
 **Coverage:**

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-04-11T15:30:46.623Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-04-11T16:20:42.028Z"
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 12
+  completed_plans: 11
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-11)
 
 **Core value:** An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
-**Current focus:** Phase 04 — lua-runtime
+**Current focus:** Phase 05 — self-extension
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
+Phase: 05 (self-extension) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Plan: Not started
 | Phase 03-02 P02 | 5min | 2 tasks | 8 files |
 | Phase 04-01 P01 | 9min | 1 tasks | 12 files |
 | Phase 04-02 P02 | 3min | 2 tasks | 7 files |
+| Phase 05-01 P01 | 6min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,10 @@ Recent decisions affecting current work:
 - [Phase 04-02]: ToolsDir does NOT create directory -- deferred to Phase 5 when agent writes first tool
 - [Phase 04-02]: LoadTools returns partial success: valid tools load even with broken scripts present
 - [Phase 04-02]: Lua loading is non-fatal in main.go: missing dir, scan errors, and load errors all allow app to start
+- [Phase 05]: Validation errors returned as JSON tool result strings, not Go errors, so model can self-correct
+- [Phase 05]: Temp-file compilation before disk write prevents partial/corrupt tool files
+- [Phase 05]: Re-compile from final path after write so LuaTool.scriptPath is correct for execution
+- [Phase 05]: Removed compile-time tool.Tool interface check from lua tests to break import cycle (tool now imports lua)
 
 ### Pending Todos
 
@@ -102,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-11T15:26:52.837Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-04-11T16:20:42.025Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None
