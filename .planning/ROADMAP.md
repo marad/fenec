@@ -28,11 +28,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User can type a message and see the response stream in token-by-token
   2. User can select which Ollama model to use via CLI flag or runtime command
   3. Model responses display with markdown formatting and syntax-highlighted code blocks
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Project scaffold, Go module, Ollama client with streaming chat
+- [ ] 01-02-PLAN.md — Markdown rendering, spinner, lipgloss styles, config/system prompt
+- [ ] 01-03-PLAN.md — REPL loop, slash commands, pager, main.go wiring, end-to-end verification
 
 ### Phase 2: Conversation
 **Goal**: User can have sustained multi-turn conversations that survive application restarts
@@ -100,7 +101,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/0 | Not started | - |
+| 1. Foundation | 0/3 | Planned | - |
 | 2. Conversation | 0/0 | Not started | - |
 | 3. Tool Execution | 0/0 | Not started | - |
 | 4. Lua Runtime | 0/0 | Not started | - |
