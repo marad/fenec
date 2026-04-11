@@ -93,7 +93,7 @@ Plans:
 
 Plans:
 - [x] 05-01-PLAN.md — Registry extensions (Unregister, provenance) + create/update/delete built-in tools with validation
-- [ ] 05-02-PLAN.md — REPL integration: /tools command, banner notifications, system prompt refresh, main.go wiring
+- [x] 05-02-PLAN.md — REPL integration: /tools command, banner notifications, system prompt refresh, main.go wiring
 
 ## Progress
 

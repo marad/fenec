@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-04-11T16:20:42.028Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-04-11T16:26:07.615Z"
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 12
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -56,6 +56,7 @@ Plan: 2 of 2
 | Phase 04-01 P01 | 9min | 1 tasks | 12 files |
 | Phase 04-02 P02 | 3min | 2 tasks | 7 files |
 | Phase 05-01 P01 | 6min | 2 tasks | 9 files |
+| Phase 05-02 P02 | 2min | 1 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,9 @@ Recent decisions affecting current work:
 - [Phase 05]: Temp-file compilation before disk write prevents partial/corrupt tool files
 - [Phase 05]: Re-compile from final path after write so LuaTool.scriptPath is correct for execution
 - [Phase 05]: Removed compile-time tool.Tool interface check from lua tests to break import cycle (tool now imports lua)
+- [Phase 05]: Self-extension tools registered as built-in so they appear as [built-in] and cannot be self-deleted
+- [Phase 05]: Disk-loaded Lua tools use RegisterLua (not Register) for correct provenance tagging
+- [Phase 05]: Closure-deferred replRef wiring pattern reused from approver for notifier callback
 
 ### Pending Todos
 
@@ -107,6 +111,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-11T16:20:42.025Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-04-11T16:26:07.613Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
