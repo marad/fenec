@@ -47,7 +47,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Context window management: StreamChat metrics capture, Show API context length, ContextTracker truncation
+- [x] 02-01-PLAN.md — Context window management: StreamChat metrics capture, Show API context length, ContextTracker truncation
 - [x] 02-02-PLAN.md — Session persistence: Session type, file-based Store with atomic writes, auto-save support
 - [ ] 02-03-PLAN.md — REPL integration: /save, /load, /history commands, auto-save on exit, main.go wiring
 
