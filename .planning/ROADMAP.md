@@ -44,11 +44,12 @@ Plans:
   2. Agent tracks token usage and truncates old messages when approaching model context limits
   3. User can save a conversation to disk and resume it in a later session
   4. Conversation auto-saves on exit so no data is lost on unexpected quit
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md — Context window management: StreamChat metrics capture, Show API context length, ContextTracker truncation
+- [ ] 02-02-PLAN.md — Session persistence: Session type, file-based Store with atomic writes, auto-save support
+- [ ] 02-03-PLAN.md — REPL integration: /save, /load, /history commands, auto-save on exit, main.go wiring
 
 ### Phase 3: Tool Execution
 **Goal**: Agent can call tools, execute shell commands, and handle errors -- with human approval for dangerous operations
@@ -101,8 +102,8 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/3 | Planned | - |
-| 2. Conversation | 0/0 | Not started | - |
+| 1. Foundation | 3/3 | Complete | 2026-04-11 |
+| 2. Conversation | 0/3 | Planned | - |
 | 3. Tool Execution | 0/0 | Not started | - |
 | 4. Lua Runtime | 0/0 | Not started | - |
 | 5. Self-Extension | 0/0 | Not started | - |
