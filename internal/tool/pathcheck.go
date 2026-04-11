@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,14 +39,15 @@ func IsDeniedPath(path string) (bool, error) {
 	}
 
 	// Resolve symlinks. If the path doesn't exist yet (e.g. new file for write),
-	// resolve the parent directory and append the base name.
+	// walk up the directory tree to find the first existing ancestor, resolve it,
+	// then append the remaining unresolved components. This handles mkdir -p
+	// scenarios where multiple parent directories don't exist yet.
 	resolved, err := filepath.EvalSymlinks(absPath)
 	if err != nil {
-		parentResolved, parentErr := filepath.EvalSymlinks(filepath.Dir(absPath))
-		if parentErr != nil {
-			return true, parentErr
+		resolved, err = resolveWithAncestor(absPath)
+		if err != nil {
+			return true, err
 		}
-		resolved = filepath.Join(parentResolved, filepath.Base(absPath))
 	}
 
 	for _, prefix := range deniedPrefixes {
@@ -81,4 +83,33 @@ func IsOutsideCWD(path string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// resolveWithAncestor walks up from absPath until it finds an existing ancestor,
+// resolves symlinks on that ancestor, and appends the remaining path components.
+func resolveWithAncestor(absPath string) (string, error) {
+	// Collect path components from bottom up until we find an existing ancestor.
+	remaining := absPath
+	var tail []string
+
+	for {
+		tail = append([]string{filepath.Base(remaining)}, tail...)
+		parent := filepath.Dir(remaining)
+
+		// Reached filesystem root without finding existing dir.
+		if parent == remaining {
+			return "", fmt.Errorf("no existing ancestor found for %s", absPath)
+		}
+
+		resolved, err := filepath.EvalSymlinks(parent)
+		if err == nil {
+			// Found an existing ancestor -- reconstruct the full resolved path.
+			for _, component := range tail {
+				resolved = filepath.Join(resolved, component)
+			}
+			return resolved, nil
+		}
+
+		remaining = parent
+	}
 }
