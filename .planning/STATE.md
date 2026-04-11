@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: "Checkpoint: 01-03 Task 2 (human-verify)"
-last_updated: "2026-04-11T11:21:29.498Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-04-11T11:51:12.722Z"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 6
+  completed_plans: 4
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-11)
 
 **Core value:** An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
-**Current focus:** Phase 01 — foundation
+**Current focus:** Phase 02 — conversation
 
 ## Current Position
 
-Phase: 2
-Plan: Not started
+Phase: 02 (conversation) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
@@ -48,6 +48,7 @@ Plan: Not started
 *Updated after each plan completion*
 | Phase 01 P02 | 3min | 2 tasks | 6 files |
 | Phase 01-foundation P01 | 4min | 3 tasks | 10 files |
+| Phase 02 P02 | 3min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,9 @@ Recent decisions affecting current work:
 - [Phase 01]: Config uses os.UserConfigDir for cross-platform config directory resolution
 - [Phase 01-foundation]: Used internal chatAPI interface wrapping api.Client for unit testing without live Ollama
 - [Phase 01-foundation]: StreamChat returns partial content on cancellation for REPL display
+- [Phase 02]: Session ID uses timestamp format 2006-01-02T15-04-05 for human readability and filesystem safety
+- [Phase 02]: Store constructor takes dir path string for testability -- caller resolves via config.SessionDir
+- [Phase 02]: AutoSave skips sessions with <=1 message to avoid persisting system-prompt-only sessions
 
 ### Pending Todos
 
@@ -75,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-11T08:11:21.029Z
-Stopped at: Checkpoint: 01-03 Task 2 (human-verify)
+Last session: 2026-04-11T11:51:12.718Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None

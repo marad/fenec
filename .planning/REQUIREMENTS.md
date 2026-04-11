@@ -17,8 +17,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Session
 
-- [ ] **SESS-01**: User can save conversation to disk and resume later
-- [ ] **SESS-02**: Session auto-saves on exit to prevent data loss
+- [x] **SESS-01**: User can save conversation to disk and resume later
+- [x] **SESS-02**: Session auto-saves on exit to prevent data loss
 
 ### Tool System
 
@@ -83,8 +83,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CHAT-03 | Phase 2 | Pending |
 | CHAT-04 | Phase 1 | Complete |
 | CHAT-05 | Phase 1 | Complete |
-| SESS-01 | Phase 2 | Pending |
-| SESS-02 | Phase 2 | Pending |
+| SESS-01 | Phase 2 | Complete |
+| SESS-02 | Phase 2 | Complete |
 | TOOL-01 | Phase 3 | Pending |
 | TOOL-02 | Phase 3 | Pending |
 | TOOL-03 | Phase 3 | Pending |
