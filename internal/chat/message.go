@@ -39,6 +39,21 @@ func (c *Conversation) AddAssistant(content string) {
 	})
 }
 
+// AddRawMessage appends an arbitrary message to the conversation.
+// Used for assistant messages containing tool calls and tool result messages.
+func (c *Conversation) AddRawMessage(msg api.Message) {
+	c.Messages = append(c.Messages, msg)
+}
+
+// AddToolResult appends a tool result message to the conversation.
+func (c *Conversation) AddToolResult(toolCallID string, content string) {
+	c.Messages = append(c.Messages, api.Message{
+		Role:       "tool",
+		Content:    content,
+		ToolCallID: toolCallID,
+	})
+}
+
 // SetModel changes the active model. Conversation history is preserved (per D-11).
 func (c *Conversation) SetModel(model string) {
 	c.Model = model

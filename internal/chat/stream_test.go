@@ -30,7 +30,7 @@ func TestStreamChatAccumulatesTokens(t *testing.T) {
 	conv := NewConversation("test-model", "You are helpful.")
 	conv.AddUser("Hi")
 
-	msg, _, err := client.StreamChat(context.Background(), conv, nil)
+	msg, _, err := client.StreamChat(context.Background(), conv, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "assistant", msg.Role)
 	assert.Equal(t, "Hello world", msg.Content)
@@ -57,7 +57,7 @@ func TestStreamChatCallsOnToken(t *testing.T) {
 	conv.AddUser("Hi")
 
 	var received []string
-	msg, _, err := client.StreamChat(context.Background(), conv, func(token string) {
+	msg, _, err := client.StreamChat(context.Background(), conv, nil, func(token string) {
 		received = append(received, token)
 	})
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestStreamChatSkipsEmptyTokens(t *testing.T) {
 	conv.AddUser("Hi")
 
 	var received []string
-	msg, _, err := client.StreamChat(context.Background(), conv, func(token string) {
+	msg, _, err := client.StreamChat(context.Background(), conv, nil, func(token string) {
 		received = append(received, token)
 	})
 	require.NoError(t, err)
@@ -104,7 +104,7 @@ func TestStreamChatSendsConversationMessages(t *testing.T) {
 	conv.AddAssistant("Hi there!")
 	conv.AddUser("How are you?")
 
-	_, _, err := client.StreamChat(context.Background(), conv, nil)
+	_, _, err := client.StreamChat(context.Background(), conv, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, capturedReq)
 	assert.Equal(t, "gemma4", capturedReq.Model)
@@ -143,7 +143,7 @@ func TestStreamChatCancellation(t *testing.T) {
 	conv := NewConversation("test-model", "")
 	conv.AddUser("Hi")
 
-	msg, metrics, err := client.StreamChat(ctx, conv, nil)
+	msg, metrics, err := client.StreamChat(ctx, conv, nil, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 	// The partial content should still be available
@@ -202,7 +202,7 @@ func TestStreamChatFirstTokenNotifier(t *testing.T) {
 	})
 
 	// Wire the notifier into the onToken callback
-	_, _, err := client.StreamChat(context.Background(), conv, func(_ string) {
+	_, _, err := client.StreamChat(context.Background(), conv, nil, func(_ string) {
 		notifier.Notify()
 	})
 	require.NoError(t, err)
@@ -235,7 +235,7 @@ func TestStreamChatReturnsMetrics(t *testing.T) {
 	conv := NewConversation("test-model", "")
 	conv.AddUser("Hi")
 
-	msg, metrics, err := client.StreamChat(context.Background(), conv, nil)
+	msg, metrics, err := client.StreamChat(context.Background(), conv, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "Hello world", msg.Content)
 	require.NotNil(t, metrics)
@@ -258,7 +258,7 @@ func TestStreamChatSetsTruncateFalseAndNumCtx(t *testing.T) {
 	conv.ContextLength = 8192
 	conv.AddUser("Hi")
 
-	_, _, err := client.StreamChat(context.Background(), conv, nil)
+	_, _, err := client.StreamChat(context.Background(), conv, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, capturedReq)
 
@@ -285,7 +285,7 @@ func TestStreamChatOmitsNumCtxWhenContextLengthZero(t *testing.T) {
 	conv := NewConversation("test-model", "")
 	conv.AddUser("Hi")
 
-	_, _, err := client.StreamChat(context.Background(), conv, nil)
+	_, _, err := client.StreamChat(context.Background(), conv, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, capturedReq)
 
@@ -295,4 +295,56 @@ func TestStreamChatOmitsNumCtxWhenContextLengthZero(t *testing.T) {
 
 	// Options should be nil when ContextLength is 0
 	assert.Nil(t, capturedReq.Options)
+}
+
+func TestStreamChatToolCalls(t *testing.T) {
+	// Mock returns a response with ToolCalls on the Done chunk
+	mock := &mockAPI{
+		chatFunc: func(_ context.Context, _ *api.ChatRequest, fn api.ChatResponseFunc) error {
+			fn(api.ChatResponse{
+				Done: true,
+				Message: api.Message{
+					Role: "assistant",
+					ToolCalls: []api.ToolCall{
+						{
+							ID: "call_1",
+							Function: api.ToolCallFunction{
+								Name: "shell_exec",
+							},
+						},
+					},
+				},
+				Metrics: api.Metrics{PromptEvalCount: 10, EvalCount: 5},
+			})
+			return nil
+		},
+	}
+	client := newClientWithAPI(mock)
+	conv := NewConversation("test", "system")
+	conv.AddUser("run ls")
+	msg, _, err := client.StreamChat(context.Background(), conv, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, msg.ToolCalls, 1)
+	assert.Equal(t, "call_1", msg.ToolCalls[0].ID)
+	assert.Equal(t, "shell_exec", msg.ToolCalls[0].Function.Name)
+}
+
+func TestStreamChatPassesTools(t *testing.T) {
+	var capturedReq *api.ChatRequest
+	mock := &mockAPI{
+		chatFunc: func(_ context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+			capturedReq = req
+			fn(api.ChatResponse{Done: true, Message: api.Message{Role: "assistant", Content: "ok"}})
+			return nil
+		},
+	}
+	client := newClientWithAPI(mock)
+	conv := NewConversation("test", "system")
+	conv.AddUser("hello")
+	tools := api.Tools{api.Tool{Type: "function", Function: api.ToolFunction{Name: "test_tool"}}}
+	_, _, err := client.StreamChat(context.Background(), conv, tools, nil)
+	require.NoError(t, err)
+	require.NotNil(t, capturedReq)
+	require.Len(t, capturedReq.Tools, 1)
+	assert.Equal(t, "test_tool", capturedReq.Tools[0].Function.Name)
 }

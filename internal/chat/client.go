@@ -15,7 +15,7 @@ import (
 type ChatService interface {
 	ListModels(ctx context.Context) ([]string, error)
 	Ping(ctx context.Context) error
-	StreamChat(ctx context.Context, conv *Conversation, onToken func(string)) (*api.Message, *api.Metrics, error)
+	StreamChat(ctx context.Context, conv *Conversation, tools api.Tools, onToken func(string)) (*api.Message, *api.Metrics, error)
 	GetContextLength(ctx context.Context, model string) (int, error)
 }
 

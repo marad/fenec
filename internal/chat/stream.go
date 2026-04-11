@@ -15,13 +15,15 @@ func boolPtr(b bool) *bool { return &b }
 // onToken is called for each content chunk as it arrives.
 // The full assistant message and Ollama Metrics are returned after streaming completes.
 // Context cancellation stops the stream (per D-04: Ctrl+C cancels active generation).
-func (c *Client) StreamChat(ctx context.Context, conv *Conversation, onToken func(string)) (*api.Message, *api.Metrics, error) {
+func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.Tools, onToken func(string)) (*api.Message, *api.Metrics, error) {
 	var content strings.Builder
 	var metrics api.Metrics
+	var finalMsg api.Message
 
 	req := &api.ChatRequest{
 		Model:    conv.Model,
 		Messages: conv.Messages,
+		Tools:    tools,
 		Truncate: boolPtr(false),
 	}
 
@@ -37,9 +39,14 @@ func (c *Client) StreamChat(ctx context.Context, conv *Conversation, onToken fun
 				onToken(resp.Message.Content)
 			}
 		}
-		// Capture metrics from the final chunk (when Done is true).
+		// Capture the full message and metrics from the final chunk (when Done is true).
+		// This preserves ToolCalls from the response.
 		if resp.Done {
 			metrics = resp.Metrics
+			finalMsg = resp.Message
+			// Ensure accumulated content is complete (streaming may split tokens).
+			finalMsg.Content = content.String()
+			finalMsg.Role = "assistant"
 		}
 		// Stop early if context is cancelled (per Pitfall 3 from RESEARCH.md).
 		return ctx.Err()
@@ -48,18 +55,21 @@ func (c *Client) StreamChat(ctx context.Context, conv *Conversation, onToken fun
 		// If the error is due to context cancellation, return the partial content
 		// along with the error so the caller can distinguish cancellation from failure.
 		if ctx.Err() != nil {
-			return &api.Message{
-				Role:    "assistant",
-				Content: content.String(),
-			}, &metrics, ctx.Err()
+			finalMsg.Content = content.String()
+			finalMsg.Role = "assistant"
+			return &finalMsg, &metrics, ctx.Err()
 		}
 		return nil, &metrics, err
 	}
 
-	return &api.Message{
-		Role:    "assistant",
-		Content: content.String(),
-	}, &metrics, nil
+	// If no Done chunk was received (e.g. stream ended without it),
+	// ensure content and role are still set from the accumulated builder.
+	if finalMsg.Role == "" {
+		finalMsg.Role = "assistant"
+		finalMsg.Content = content.String()
+	}
+
+	return &finalMsg, &metrics, nil
 }
 
 // Compile-time check: Client satisfies ChatService.
