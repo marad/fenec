@@ -65,7 +65,7 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md — Tool registry interface, shell_exec tool with timeout, dangerous command safety gates
-- [ ] 03-02-PLAN.md — StreamChat tool call support, agentic loop in REPL, main.go wiring
+- [x] 03-02-PLAN.md — StreamChat tool call support, agentic loop in REPL, main.go wiring
 
 ### Phase 4: Lua Runtime
 **Goal**: Lua scripts on disk are loaded as first-class tools alongside Go built-ins

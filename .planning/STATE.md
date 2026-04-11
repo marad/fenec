@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-04-11T14:04:37.202Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-04-11T14:11:57.643Z"
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -52,6 +52,7 @@ Plan: 2 of 2
 | Phase 02-01 P01 | 4min | 2 tasks | 7 files |
 | Phase 02-conversation P03 | 5min | 2 tasks | 5 files |
 | Phase 03-01 P01 | 3min | 2 tasks | 6 files |
+| Phase 03-02 P02 | 5min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,9 @@ Recent decisions affecting current work:
 - [Phase 03]: Tool interface uses api.ToolCallFunctionArguments directly for type safety with Ollama API
 - [Phase 03]: Nil approver means deny-all for dangerous commands (secure by default)
 - [Phase 03]: ShellTool uses process group management (Setpgid) with WaitDelay for clean timeout kills
+- [Phase 03]: StreamChat captures full api.Message on Done chunk preserving ToolCalls, with fallback for no-Done-chunk compatibility
+- [Phase 03]: ApproveCommand exported on REPL, wired to ShellTool via closure in main.go to break initialization cycle
+- [Phase 03]: Max 10 tool rounds prevents infinite loops; forced summary request when limit reached
 
 ### Pending Todos
 
@@ -90,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-11T14:04:37.199Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-04-11T14:11:57.640Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
