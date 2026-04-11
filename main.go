@@ -21,6 +21,7 @@ func main() {
 	// Parse flags (per D-16: --host flag to override default).
 	host := flag.String("host", "", "Ollama server address (default: localhost:11434)")
 	pipeMode := flag.Bool("pipe", false, "Read lines from stdin, send each to model, exit on EOF")
+	debugMode := flag.Bool("debug", false, "Show tool call results and other debug output")
 	flag.Parse()
 
 	// Determine host.
@@ -151,6 +152,7 @@ func main() {
 	// Wire the approval function and REPL reference now that REPL is created.
 	approver = r.ApproveCommand
 	replRef = r
+	r.SetDebug(*debugMode)
 
 	// Pipe mode: read stdin line-by-line, send to model, exit on EOF.
 	if *pipeMode {

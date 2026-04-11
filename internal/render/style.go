@@ -24,6 +24,10 @@ var (
 	// toolEventStyle styles tool lifecycle event banners.
 	toolEventStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#7AA2F7"))
+
+	// toolCallStyle styles tool call indicators (muted gray).
+	toolCallStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#6B7089"))
 )
 
 // FormatPrompt returns the readline prompt string: [modelName]>
@@ -42,6 +46,19 @@ func FormatBanner(version string) string {
 // FormatError returns a styled error message.
 func FormatError(msg string) string {
 	return errorStyle.Render("Error: ") + msg
+}
+
+// FormatToolCall returns a muted gray indicator for tool dispatch.
+func FormatToolCall(name string, extra string) string {
+	return toolCallStyle.Render("[tool: "+name+"]") + extra
+}
+
+// FormatToolResult returns a muted gray result indicator (debug mode only).
+func FormatToolResult(result string) string {
+	if len(result) <= 512 {
+		return toolCallStyle.Render("[result: " + result + "]")
+	}
+	return toolCallStyle.Render(fmt.Sprintf("[result: %d bytes]", len(result)))
 }
 
 // FormatToolEvent returns a styled banner for tool lifecycle events.

@@ -37,6 +37,7 @@ type REPL struct {
 	autoSaved sync.Once            // Ensures auto-save runs only once
 	registry        *tool.Registry // Tool registry for agentic loop
 	baseSystemPrompt string        // System prompt before tool descriptions (for refresh)
+	debug           bool           // Show tool results when true
 }
 
 // NewREPL creates a REPL connected to the given chat service.
@@ -342,23 +343,21 @@ func (r *REPL) sendMessage(input string) {
 
 		// Execute each tool call.
 		for _, tc := range msg.ToolCalls {
-			// Print tool call indicator.
-			cmdInfo := ""
+			// Print muted tool call indicator.
+			extra := ""
 			if cmdVal, ok := tc.Function.Arguments.Get("command"); ok {
-				cmdInfo = fmt.Sprintf(" %v", cmdVal)
+				extra = fmt.Sprintf(" %v", cmdVal)
 			}
-			fmt.Fprintf(r.rl.Stdout(), "\n[tool: %s]%s\n", tc.Function.Name, cmdInfo)
+			fmt.Fprintf(r.rl.Stdout(), "\n%s\n", render.FormatToolCall(tc.Function.Name, extra))
 
 			result, err := r.registry.Dispatch(ctx, tc)
 			if err != nil {
 				result = fmt.Sprintf(`{"error": %q}`, err.Error())
 			}
 
-			// Print result indicator with content preview for short results.
-			if len(result) <= 512 {
-				fmt.Fprintf(r.rl.Stdout(), "[result: %s]\n", result)
-			} else {
-				fmt.Fprintf(r.rl.Stdout(), "[result: %d bytes]\n", len(result))
+			// Show tool result only in debug mode.
+			if r.debug {
+				fmt.Fprintf(r.rl.Stdout(), "%s\n", render.FormatToolResult(result))
 			}
 
 			// Add tool result to conversation.
@@ -634,6 +633,11 @@ func (r *REPL) refreshSystemPrompt() {
 		}
 		r.conv.Messages[0].Content = prompt
 	}
+}
+
+// SetDebug enables or disables debug output (e.g., tool result display).
+func (r *REPL) SetDebug(on bool) {
+	r.debug = on
 }
 
 // RefreshSystemPrompt is the exported wrapper for refreshSystemPrompt.
