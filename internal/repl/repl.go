@@ -205,7 +205,7 @@ func (r *REPL) sendMessage(input string) {
 	})
 
 	// Stream the response — tokens print directly as they arrive.
-	msg, err := r.client.StreamChat(ctx, r.conv, func(token string) {
+	msg, _, err := r.client.StreamChat(ctx, r.conv, func(token string) {
 		notifier.Notify()
 		fmt.Fprint(r.rl.Stdout(), token)
 		content.WriteString(token)
