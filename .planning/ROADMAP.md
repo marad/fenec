@@ -61,11 +61,11 @@ Plans:
   3. Agent can execute a shell command and receive stdout, stderr, and exit code
   4. Dangerous operations (rm, sudo, file writes) prompt the user for approval before executing
   5. Shell commands that exceed a configurable timeout are killed and the timeout is reported to the model
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md — Tool registry interface, shell_exec tool with timeout, dangerous command safety gates
+- [ ] 03-02-PLAN.md — StreamChat tool call support, agentic loop in REPL, main.go wiring
 
 ### Phase 4: Lua Runtime
 **Goal**: Lua scripts on disk are loaded as first-class tools alongside Go built-ins
@@ -104,6 +104,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | 2026-04-11 |
 | 2. Conversation | 3/3 | Complete   | 2026-04-11 |
-| 3. Tool Execution | 0/0 | Not started | - |
+| 3. Tool Execution | 0/2 | Planning complete | - |
 | 4. Lua Runtime | 0/0 | Not started | - |
 | 5. Self-Extension | 0/0 | Not started | - |
