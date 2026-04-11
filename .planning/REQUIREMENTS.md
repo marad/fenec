@@ -43,10 +43,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### File Tools
 
-- [ ] **FILE-01**: Agent can read files with offset/limit support and receive structured metadata (line count, truncation, binary detection)
-- [ ] **FILE-02**: Agent can list directory contents with entry type, name, and size metadata
+- [x] **FILE-01**: Agent can read files with offset/limit support and receive structured metadata (line count, truncation, binary detection)
+- [x] **FILE-02**: Agent can list directory contents with entry type, name, and size metadata
 - [ ] **FILE-03**: Agent can write and edit files with automatic parent directory creation and CWD-based approval gating
-- [ ] **FILE-04**: File operations on sensitive system paths (/etc, /usr, /bin, /sbin, /boot, ~/.ssh, ~/.gnupg) are blocked by a deny list
+- [x] **FILE-04**: File operations on sensitive system paths (/etc, /usr, /bin, /sbin, /boot, ~/.ssh, ~/.gnupg) are blocked by a deny list
 
 ## v2 Requirements
 
