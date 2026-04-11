@@ -1,9 +1,15 @@
 package repl
 
 import (
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/marad/fenec/internal/session"
+	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseCommandValid(t *testing.T) {
@@ -71,4 +77,74 @@ func TestMultiLineDetection(t *testing.T) {
 	assert.False(t, isContinuation("Tell me about"))
 	assert.False(t, isContinuation(""))
 	assert.False(t, isContinuation("Tell me about \\n"))
+}
+
+func TestParseNewCommands(t *testing.T) {
+	tests := []struct {
+		input string
+		name  string
+	}{
+		{"/save", "/save"},
+		{"/load", "/load"},
+		{"/history", "/history"},
+	}
+	for _, tt := range tests {
+		cmd := ParseCommand(tt.input)
+		require.NotNil(t, cmd, "command %q should parse", tt.input)
+		assert.Equal(t, tt.name, cmd.Name)
+	}
+}
+
+func TestHelpTextContainsNewCommands(t *testing.T) {
+	assert.Contains(t, helpText, "/save")
+	assert.Contains(t, helpText, "/load")
+	assert.Contains(t, helpText, "/history")
+}
+
+func TestAutoSaveCalledOnce(t *testing.T) {
+	// Create a temp directory for the session store.
+	dir := t.TempDir()
+	store := session.NewStore(dir)
+
+	sess := session.NewSession("test-model")
+	// Add enough messages so HasContent returns true (>1 message).
+	sess.Messages = append(sess.Messages,
+		api.Message{Role: "system", Content: "system prompt"},
+		api.Message{Role: "user", Content: "hello"},
+	)
+
+	// We cannot easily construct a full REPL in tests (requires readline, etc.),
+	// so we test the sync.Once behavior directly using the same pattern.
+	var saveCount atomic.Int32
+	var once sync.Once
+
+	autoSaveFn := func() {
+		once.Do(func() {
+			saveCount.Add(1)
+			err := store.AutoSave(sess)
+			assert.NoError(t, err)
+		})
+	}
+
+	// Call multiple times concurrently.
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			autoSaveFn()
+		}()
+	}
+	wg.Wait()
+
+	assert.Equal(t, int32(1), saveCount.Load(), "auto-save should execute exactly once")
+
+	// Verify the auto-save file was actually written.
+	loaded, err := store.LoadAutoSave()
+	require.NoError(t, err)
+	assert.Equal(t, "test-model", loaded.Model)
+	assert.Len(t, loaded.Messages, 2)
+
+	// Use time and require to satisfy imports.
+	_ = time.Now()
 }

@@ -9,12 +9,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chzyer/readline"
 
 	"github.com/marad/fenec/internal/chat"
 	"github.com/marad/fenec/internal/config"
 	"github.com/marad/fenec/internal/render"
+	"github.com/marad/fenec/internal/session"
 )
 
 // REPL manages the interactive chat loop.
@@ -26,10 +28,14 @@ type REPL struct {
 	streaming bool               // True while streaming a response
 	cancelFn  context.CancelFunc // For cancelling active generation via Ctrl+C
 	sigCh     chan os.Signal      // SIGINT channel for cleanup
+	tracker   *chat.ContextTracker // Context window tracking
+	store     *session.Store       // Session persistence
+	session   *session.Session     // Current session
+	autoSaved sync.Once            // Ensures auto-save runs only once
 }
 
 // NewREPL creates a REPL connected to the given chat service.
-func NewREPL(client chat.ChatService, model string, systemPrompt string) (*REPL, error) {
+func NewREPL(client chat.ChatService, model string, systemPrompt string, tracker *chat.ContextTracker, store *session.Store) (*REPL, error) {
 	historyFile, err := config.HistoryFile()
 	if err != nil {
 		// Non-fatal: proceed without history.
@@ -48,11 +54,21 @@ func NewREPL(client chat.ChatService, model string, systemPrompt string) (*REPL,
 
 	conv := chat.NewConversation(model, systemPrompt)
 
+	// Set context length from tracker if available.
+	if tracker != nil {
+		conv.ContextLength = tracker.Available()
+	}
+
+	sess := session.NewSession(model)
+
 	r := &REPL{
-		client: client,
-		conv:   conv,
-		rl:     rl,
-		sigCh:  make(chan os.Signal, 1),
+		client:  client,
+		conv:    conv,
+		rl:      rl,
+		sigCh:   make(chan os.Signal, 1),
+		tracker: tracker,
+		store:   store,
+		session: sess,
 	}
 
 	// Ctrl+C / SIGINT handling (per D-04).
@@ -74,6 +90,8 @@ func NewREPL(client chat.ChatService, model string, systemPrompt string) (*REPL,
 
 // Run starts the interactive REPL loop. Blocks until exit.
 func (r *REPL) Run() error {
+	defer r.autoSave()
+
 	// Print startup banner (per D-13).
 	fmt.Fprintln(r.rl.Stdout(), render.FormatBanner(config.Version))
 	// Blank line separator (per D-07).
@@ -114,6 +132,12 @@ func (r *REPL) Run() error {
 				fmt.Fprintln(r.rl.Stdout(), helpText)
 			case "/model":
 				r.handleModelCommand()
+			case "/save":
+				r.handleSaveCommand()
+			case "/load":
+				r.handleLoadCommand()
+			case "/history":
+				r.handleHistoryCommand()
 			default:
 				fmt.Fprintf(r.rl.Stdout(), "Unknown command: %s. Type /help for available commands.\n", cmd.Name)
 			}
@@ -130,6 +154,7 @@ func (r *REPL) Run() error {
 
 // Close cleans up REPL resources.
 func (r *REPL) Close() {
+	r.autoSave()
 	signal.Stop(r.sigCh)
 	close(r.sigCh)
 	r.rl.Close()
@@ -205,7 +230,7 @@ func (r *REPL) sendMessage(input string) {
 	})
 
 	// Stream the response — tokens print directly as they arrive.
-	msg, _, err := r.client.StreamChat(ctx, r.conv, func(token string) {
+	msg, metrics, err := r.client.StreamChat(ctx, r.conv, func(token string) {
 		notifier.Notify()
 		fmt.Fprint(r.rl.Stdout(), token)
 		content.WriteString(token)
@@ -228,6 +253,19 @@ func (r *REPL) sendMessage(input string) {
 
 	if content.Len() > 0 {
 		r.conv.AddAssistant(content.String())
+	}
+
+	// Update context tracking and handle truncation.
+	if r.tracker != nil && metrics != nil {
+		r.tracker.Update(metrics.PromptEvalCount, metrics.EvalCount)
+
+		if r.tracker.ShouldTruncate() {
+			removed := r.tracker.TruncateOldest(r.conv)
+			if removed > 0 {
+				fmt.Fprintf(r.rl.Stdout(), "\n[context: dropped %d oldest messages to stay within %d token limit]\n",
+					removed, r.tracker.Available())
+			}
+		}
 	}
 }
 
@@ -282,4 +320,133 @@ func (r *REPL) handleModelCommand() {
 	r.conv.SetModel(selectedModel) // Per D-11: history preserved.
 	r.rl.SetPrompt(render.FormatPrompt(selectedModel))
 	fmt.Fprintf(r.rl.Stdout(), "Switched to %s\n", selectedModel)
+}
+
+// autoSave persists the current session to the auto-save file.
+// Uses sync.Once to ensure only a single save occurs, even if called from
+// both defer in Run() and Close().
+func (r *REPL) autoSave() {
+	r.autoSaved.Do(func() {
+		if r.store == nil || r.session == nil {
+			return
+		}
+		// Sync conversation messages to session.
+		r.session.Messages = r.conv.Messages
+		r.session.UpdatedAt = time.Now()
+		if r.tracker != nil {
+			r.session.TokenCount = r.tracker.TokenUsage()
+		}
+		if err := r.store.AutoSave(r.session); err != nil {
+			// Best effort -- log but don't fail exit.
+			fmt.Fprintf(os.Stderr, "auto-save failed: %v\n", err)
+		}
+	})
+}
+
+// handleSaveCommand persists the current conversation to a named session file.
+func (r *REPL) handleSaveCommand() {
+	if r.store == nil {
+		fmt.Fprintln(r.rl.Stdout(), "Session storage not available.")
+		return
+	}
+	r.session.Messages = r.conv.Messages
+	r.session.UpdatedAt = time.Now()
+	if r.tracker != nil {
+		r.session.TokenCount = r.tracker.TokenUsage()
+	}
+	if err := r.store.Save(r.session); err != nil {
+		fmt.Fprintln(r.rl.Stdout(), render.FormatError(fmt.Sprintf("Save failed: %v", err)))
+		return
+	}
+	fmt.Fprintf(r.rl.Stdout(), "Session saved: %s (%d messages)\n", r.session.ID, len(r.session.Messages))
+}
+
+// handleLoadCommand lists saved sessions and lets the user select one to restore.
+func (r *REPL) handleLoadCommand() {
+	if r.store == nil {
+		fmt.Fprintln(r.rl.Stdout(), "Session storage not available.")
+		return
+	}
+
+	sessions, err := r.store.List()
+	if err != nil {
+		fmt.Fprintln(r.rl.Stdout(), render.FormatError(fmt.Sprintf("Failed to list sessions: %v", err)))
+		return
+	}
+
+	// Include auto-save if it exists.
+	autoSave, autoErr := r.store.LoadAutoSave()
+	hasAutoSave := autoErr == nil && autoSave != nil
+
+	if len(sessions) == 0 && !hasAutoSave {
+		fmt.Fprintln(r.rl.Stdout(), "No saved sessions found.")
+		return
+	}
+
+	fmt.Fprintln(r.rl.Stdout(), "Saved sessions:")
+	if hasAutoSave {
+		fmt.Fprintf(r.rl.Stdout(), "  0. [auto-save] %s (%d messages, %s)\n",
+			autoSave.Model, len(autoSave.Messages), autoSave.UpdatedAt.Format("2006-01-02 15:04"))
+	}
+	for i, s := range sessions {
+		fmt.Fprintf(r.rl.Stdout(), "  %d. %s - %s (%d messages, %s)\n",
+			i+1, s.ID, s.Model, s.MessageCount, s.UpdatedAt.Format("2006-01-02 15:04"))
+	}
+
+	// Read selection.
+	origPrompt := r.rl.Config.Prompt
+	maxNum := len(sessions)
+	minNum := 1
+	if hasAutoSave {
+		minNum = 0
+	}
+	r.rl.SetPrompt(fmt.Sprintf("Select session [%d-%d]: ", minNum, maxNum))
+
+	selection, err := r.rl.Readline()
+	r.rl.SetPrompt(origPrompt)
+	if err != nil {
+		return
+	}
+
+	selection = strings.TrimSpace(selection)
+	if selection == "" {
+		return
+	}
+
+	num, err := strconv.Atoi(selection)
+	if err != nil || num < minNum || num > maxNum {
+		fmt.Fprintf(r.rl.Stdout(), "Invalid selection: %s\n", selection)
+		return
+	}
+
+	var loaded *session.Session
+	if num == 0 && hasAutoSave {
+		loaded = autoSave
+	} else {
+		loaded, err = r.store.Load(sessions[num-1].ID)
+		if err != nil {
+			fmt.Fprintln(r.rl.Stdout(), render.FormatError(fmt.Sprintf("Failed to load session: %v", err)))
+			return
+		}
+	}
+
+	// Restore conversation state.
+	r.conv.Messages = loaded.Messages
+	r.conv.SetModel(loaded.Model)
+	r.session = loaded
+	r.rl.SetPrompt(render.FormatPrompt(loaded.Model))
+	fmt.Fprintf(r.rl.Stdout(), "Loaded session %s (%d messages, model: %s)\n",
+		loaded.ID, len(loaded.Messages), loaded.Model)
+}
+
+// handleHistoryCommand displays conversation statistics.
+func (r *REPL) handleHistoryCommand() {
+	msgCount := len(r.conv.Messages)
+	fmt.Fprintf(r.rl.Stdout(), "Messages: %d\n", msgCount)
+	if r.tracker != nil {
+		fmt.Fprintf(r.rl.Stdout(), "Tokens used: %d / %d (%.0f%%)\n",
+			r.tracker.TokenUsage(), r.tracker.Available(),
+			float64(r.tracker.TokenUsage())/float64(r.tracker.Available())*100)
+	}
+	fmt.Fprintf(r.rl.Stdout(), "Session: %s\n", r.session.ID)
 }

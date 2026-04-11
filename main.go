@@ -11,6 +11,7 @@ import (
 	"github.com/marad/fenec/internal/config"
 	"github.com/marad/fenec/internal/render"
 	"github.com/marad/fenec/internal/repl"
+	"github.com/marad/fenec/internal/session"
 )
 
 func main() {
@@ -58,14 +59,38 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Query model's context window size.
+	ctxLen, err := client.GetContextLength(ctx, defaultModel)
+	if err != nil {
+		// Non-fatal: use fallback.
+		ctxLen = 4096
+	}
+
+	// Create context tracker (85% threshold triggers truncation).
+	tracker := chat.NewContextTracker(ctxLen, 0.85)
+
+	// Create session store.
+	sessDir, err := config.SessionDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, render.FormatError(
+			fmt.Sprintf("Failed to create session directory: %v", err)))
+		os.Exit(1)
+	}
+	store := session.NewStore(sessDir)
+
 	// Create and run REPL.
-	r, err := repl.NewREPL(client, defaultModel, systemPrompt)
+	r, err := repl.NewREPL(client, defaultModel, systemPrompt, tracker, store)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, render.FormatError(
 			fmt.Sprintf("Failed to start REPL: %v", err)))
 		os.Exit(1)
 	}
 	defer r.Close()
+
+	// Check for auto-saved session.
+	if _, autoErr := store.LoadAutoSave(); autoErr == nil {
+		fmt.Fprintln(os.Stdout, "Previous session auto-saved. Type /load to resume it.")
+	}
 
 	if err := r.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, render.FormatError(err.Error()))
