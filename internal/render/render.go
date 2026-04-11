@@ -29,6 +29,10 @@ func RenderMarkdown(content string, width int) (string, error) {
 		return "", fmt.Errorf("rendering markdown: %w", err)
 	}
 
+	// Glamour's styles add leading/trailing blank lines around blocks.
+	// Trim them so the caller controls spacing.
+	rendered = strings.TrimRight(rendered, "\n")
+
 	return rendered, nil
 }
 

@@ -9,13 +9,11 @@ import (
 var (
 	// modelStyle styles the model name in the prompt bracket.
 	modelStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#7D56F4")).
-		Bold(true)
+		Foreground(lipgloss.Color("#A9B1D6"))
 
 	// bannerStyle styles the startup banner.
 	bannerStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#7D56F4")).
-		Bold(true)
+		Foreground(lipgloss.Color("#A9B1D6"))
 
 	// errorStyle styles error messages.
 	errorStyle = lipgloss.NewStyle().

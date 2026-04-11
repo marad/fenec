@@ -198,19 +198,17 @@ func (r *REPL) sendMessage(input string) {
 	sp := render.NewSpinner(r.rl.Stdout())
 	sp.Start()
 
-	// Track raw output for two-phase rendering (per D-06).
-	var rawContent strings.Builder
-
 	// Use FirstTokenNotifier to stop spinner on first token.
+	var content strings.Builder
 	notifier := chat.NewFirstTokenNotifier(func() {
 		sp.Stop()
 	})
 
-	// Stream the response.
+	// Stream the response — tokens print directly as they arrive.
 	msg, err := r.client.StreamChat(ctx, r.conv, func(token string) {
 		notifier.Notify()
 		fmt.Fprint(r.rl.Stdout(), token)
-		rawContent.WriteString(token)
+		content.WriteString(token)
 	})
 
 	// Ensure spinner is stopped (in case no tokens arrived).
@@ -219,7 +217,6 @@ func (r *REPL) sendMessage(input string) {
 	if err != nil {
 		if ctx.Err() == context.Canceled {
 			fmt.Fprintln(r.rl.Stdout(), "\n[generation cancelled]")
-			// Still add partial content to conversation if any was streamed.
 			if msg != nil && msg.Content != "" {
 				r.conv.AddAssistant(msg.Content)
 			}
@@ -229,31 +226,8 @@ func (r *REPL) sendMessage(input string) {
 		return
 	}
 
-	// Two-phase rendering (per D-06):
-	// 1. Raw tokens were already printed during streaming.
-	// 2. Now re-render with markdown formatting.
-	raw := rawContent.String()
-	if raw != "" {
-		rawLines := render.CountLines(raw)
-		width := TerminalWidth()
-
-		rendered, renderErr := render.RenderMarkdown(raw, width)
-		if renderErr == nil {
-			render.OverwriteRawOutput(r.rl.Stdout(), rawLines, rendered)
-
-			// Auto-page if rendered output exceeds terminal height (per D-08).
-			renderedLineCount := render.CountLines(rendered)
-			termHeight := TerminalHeight()
-			if renderedLineCount > termHeight {
-				// The content was already overwritten in place. For very long
-				// responses the user would have seen it scroll by. Re-display
-				// with paging so they can read it.
-				PageOutput(r.rl.Stdout(), rendered, termHeight, os.Stdin)
-			}
-		}
-		// If rendering fails, the raw output is already visible -- no action needed.
-
-		r.conv.AddAssistant(raw)
+	if content.Len() > 0 {
+		r.conv.AddAssistant(content.String())
 	}
 }
 

@@ -3,15 +3,17 @@ package render
 import (
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/briandowns/spinner"
 )
 
-// Spinner wraps the briandowns/spinner for the thinking indicator.
+// Spinner wraps the braindowns/spinner for the thinking indicator.
 type Spinner struct {
-	s *spinner.Spinner
-	w io.Writer
+	s       *spinner.Spinner
+	w       io.Writer
+	stopped sync.Once
 }
 
 // NewSpinner creates a thinking indicator that writes to the given writer.
@@ -33,9 +35,10 @@ func (sp *Spinner) Start() {
 	sp.s.Start()
 }
 
-// Stop halts the spinner and clears its line.
+// Stop halts the spinner and clears its line. Safe to call multiple times.
 func (sp *Spinner) Stop() {
-	sp.s.Stop()
-	// Clear spinner residue: carriage return + clear line
-	fmt.Fprint(sp.w, "\r\033[K")
+	sp.stopped.Do(func() {
+		sp.s.Stop()
+		fmt.Fprint(sp.w, "\r\033[K")
+	})
 }
