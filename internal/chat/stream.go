@@ -32,6 +32,7 @@ func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.T
 		req.Options = map[string]any{"num_ctx": conv.ContextLength}
 	}
 
+	var toolCalls []api.ToolCall
 	err := c.api.Chat(ctx, req, func(resp api.ChatResponse) error {
 		if resp.Message.Content != "" {
 			content.WriteString(resp.Message.Content)
@@ -39,18 +40,27 @@ func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.T
 				onToken(resp.Message.Content)
 			}
 		}
-		// Capture the full message and metrics from the final chunk (when Done is true).
-		// This preserves ToolCalls from the response.
+		// Accumulate tool calls from streaming chunks. Some models (e.g.,
+		// Gemma 4) send tool calls in a pre-Done chunk while the Done chunk
+		// itself carries zero tool calls.
+		if len(resp.Message.ToolCalls) > 0 {
+			toolCalls = append(toolCalls, resp.Message.ToolCalls...)
+		}
+		// Capture metrics from the final chunk.
 		if resp.Done {
 			metrics = resp.Metrics
 			finalMsg = resp.Message
-			// Ensure accumulated content is complete (streaming may split tokens).
 			finalMsg.Content = content.String()
 			finalMsg.Role = "assistant"
 		}
 		// Stop early if context is cancelled (per Pitfall 3 from RESEARCH.md).
 		return ctx.Err()
 	})
+	// Ensure accumulated tool calls are on the final message regardless of
+	// which chunk originally carried them.
+	if len(toolCalls) > 0 {
+		finalMsg.ToolCalls = toolCalls
+	}
 	if err != nil {
 		// If the error is due to context cancellation, return the partial content
 		// along with the error so the caller can distinguish cancellation from failure.

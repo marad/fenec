@@ -1,6 +1,7 @@
 package repl
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -172,6 +173,42 @@ func (r *REPL) Run() error {
 	}
 }
 
+// RunPipe reads lines from r and sends each to the model, printing responses
+// to stdout. Exits on EOF. Used for non-interactive testing (e.g., piped input).
+func (r *REPL) RunPipe(input io.Reader) error {
+	scanner := bufio.NewScanner(input)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if line == "/quit" {
+			return nil
+		}
+		// Handle slash commands inline.
+		if IsCommand(line) {
+			cmd := ParseCommand(line)
+			if cmd != nil {
+				switch cmd.Name {
+				case "/tools":
+					r.handleToolsCommand()
+				case "/help":
+					fmt.Fprintln(r.rl.Stdout(), helpText)
+				case "/history":
+					r.handleHistoryCommand()
+				default:
+					fmt.Fprintf(r.rl.Stdout(), "Unsupported in pipe mode: %s\n", cmd.Name)
+				}
+			}
+			continue
+		}
+		fmt.Fprintf(r.rl.Stdout(), "> %s\n", line)
+		r.sendMessage(line)
+		fmt.Fprintln(r.rl.Stdout())
+	}
+	return scanner.Err()
+}
+
 // Close cleans up REPL resources.
 func (r *REPL) Close() {
 	r.autoSave()
@@ -317,8 +354,12 @@ func (r *REPL) sendMessage(input string) {
 				result = fmt.Sprintf(`{"error": %q}`, err.Error())
 			}
 
-			// Print brief result indicator.
-			fmt.Fprintf(r.rl.Stdout(), "[result: %d bytes]\n", len(result))
+			// Print result indicator with content preview for short results.
+			if len(result) <= 512 {
+				fmt.Fprintf(r.rl.Stdout(), "[result: %s]\n", result)
+			} else {
+				fmt.Fprintf(r.rl.Stdout(), "[result: %d bytes]\n", len(result))
+			}
 
 			// Add tool result to conversation.
 			r.conv.AddToolResult(tc.ID, result)
