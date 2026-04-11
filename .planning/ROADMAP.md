@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 - [x] 01-01-PLAN.md — Project scaffold, Go module, Ollama client with streaming chat
 - [x] 01-02-PLAN.md — Markdown rendering, spinner, lipgloss styles, config/system prompt
-- [ ] 01-03-PLAN.md — REPL loop, slash commands, pager, main.go wiring, end-to-end verification
+- [x] 01-03-PLAN.md — REPL loop, slash commands, pager, main.go wiring, end-to-end verification
 
 ### Phase 2: Conversation
 **Goal**: User can have sustained multi-turn conversations that survive application restarts
