@@ -62,6 +62,20 @@ func TestHistoryFile(t *testing.T) {
 	assert.True(t, info.IsDir(), "parent directory should exist")
 }
 
+func TestSessionDirCreatesDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	dir, err := SessionDir()
+	require.NoError(t, err)
+	assert.Contains(t, dir, "sessions")
+
+	// Verify directory exists.
+	info, err := os.Stat(dir)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+}
+
 func TestDefaultHostValue(t *testing.T) {
 	assert.Equal(t, "http://localhost:11434", DefaultHost)
 }

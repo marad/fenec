@@ -51,6 +51,23 @@ func LoadSystemPrompt() (string, error) {
 	return string(data), nil
 }
 
+// SessionDir returns the path to the session storage directory.
+// Located at {ConfigDir}/sessions/.
+// Creates the directory if it doesn't exist.
+func SessionDir() (string, error) {
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+
+	sessDir := filepath.Join(dir, "sessions")
+	if err := os.MkdirAll(sessDir, 0755); err != nil {
+		return "", err
+	}
+
+	return sessDir, nil
+}
+
 // HistoryFile returns the path to the readline history file.
 // Located at {ConfigDir}/history.
 // Creates the config directory if it doesn't exist.
