@@ -107,3 +107,20 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 3. Tool Execution | 0/2 | Planning complete | - |
 | 4. Lua Runtime | 0/2 | Planning complete | - |
 | 5. Self-Extension | 0/2 | Planning complete | - |
+
+### Phase 6: File Tools — built-in edit, read, and write tools for file manipulation
+
+**Goal:** Agent has built-in file manipulation tools (read, write, edit, list) with path safety and CWD-based approval gating
+**Depends on:** Phase 5
+**Requirements**: FILE-01, FILE-02, FILE-03, FILE-04
+**Success Criteria** (what must be TRUE):
+  1. Agent can read files with offset/limit support and receive structured metadata (line count, truncation status)
+  2. Agent can write files with automatic parent directory creation, gated by CWD-based approval for out-of-directory writes
+  3. Agent can edit files via search-and-replace without corrupting line endings
+  4. Agent can list directory contents with type and size metadata
+  5. All file tools reject operations on sensitive system paths (deny list)
+**Plans:** 2 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Path safety module, read_file tool, list_directory tool
+- [ ] 06-02-PLAN.md — write_file tool, edit_file tool, main.go registration wiring

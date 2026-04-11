@@ -41,6 +41,13 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **LUA-05**: Lua tools are validated (syntax + schema) before persisting
 - [x] **LUA-06**: Broken Lua tools are detected and reported, not silently loaded
 
+### File Tools
+
+- [ ] **FILE-01**: Agent can read files with offset/limit support and receive structured metadata (line count, truncation, binary detection)
+- [ ] **FILE-02**: Agent can list directory contents with entry type, name, and size metadata
+- [ ] **FILE-03**: Agent can write and edit files with automatic parent directory creation and CWD-based approval gating
+- [ ] **FILE-04**: File operations on sensitive system paths (/etc, /usr, /bin, /sbin, /boot, ~/.ssh, ~/.gnupg) are blocked by a deny list
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -97,12 +104,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LUA-04 | Phase 4 | Complete |
 | LUA-05 | Phase 5 | Complete |
 | LUA-06 | Phase 4 | Complete |
+| FILE-01 | Phase 6 | Planned |
+| FILE-02 | Phase 6 | Planned |
+| FILE-03 | Phase 6 | Planned |
+| FILE-04 | Phase 6 | Planned |
 
 **Coverage:**
-- v1 requirements: 19 total
-- Mapped to phases: 19
+- v1 requirements: 23 total
+- Mapped to phases: 23
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-11*
-*Last updated: 2026-04-11 after roadmap creation*
+*Last updated: 2026-04-11 after Phase 6 planning*
