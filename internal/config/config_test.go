@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -74,6 +75,24 @@ func TestSessionDirCreatesDirectory(t *testing.T) {
 	info, err := os.Stat(dir)
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
+}
+
+func TestToolsDir(t *testing.T) {
+	dir, err := ToolsDir()
+	require.NoError(t, err)
+	assert.True(t, strings.HasSuffix(dir, filepath.Join("fenec", "tools")),
+		"ToolsDir should end with fenec/tools, got: %s", dir)
+}
+
+func TestToolsDirDoesNotCreate(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	dir, err := ToolsDir()
+	require.NoError(t, err)
+	// The directory should NOT have been created by ToolsDir.
+	_, statErr := os.Stat(dir)
+	assert.True(t, os.IsNotExist(statErr), "ToolsDir should not create the directory")
 }
 
 func TestDefaultHostValue(t *testing.T) {
