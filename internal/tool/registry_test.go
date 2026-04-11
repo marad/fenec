@@ -118,3 +118,81 @@ func TestRegistryToolsEmpty(t *testing.T) {
 	tools := reg.Tools()
 	assert.Empty(t, tools)
 }
+
+func TestRegistryUnregister(t *testing.T) {
+	t.Run("existing tool returns true and removes it", func(t *testing.T) {
+		reg := NewRegistry()
+		reg.Register(&dummyTool{name: "tool_a", desc: "Tool A"})
+
+		ok := reg.Unregister("tool_a")
+		assert.True(t, ok)
+
+		// Should no longer be in Tools()
+		tools := reg.Tools()
+		assert.Empty(t, tools)
+
+		// Should no longer dispatch
+		args := api.NewToolCallFunctionArguments()
+		call := api.ToolCall{Function: api.ToolCallFunction{Name: "tool_a", Arguments: args}}
+		_, err := reg.Dispatch(context.Background(), call)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown tool")
+	})
+
+	t.Run("nonexistent tool returns false without panic", func(t *testing.T) {
+		reg := NewRegistry()
+		ok := reg.Unregister("nonexistent")
+		assert.False(t, ok)
+	})
+}
+
+func TestRegistryHas(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&dummyTool{name: "tool_a", desc: "Tool A"})
+
+	assert.True(t, reg.Has("tool_a"))
+	assert.False(t, reg.Has("missing"))
+}
+
+func TestRegistryIsBuiltIn(t *testing.T) {
+	reg := NewRegistry()
+
+	// Register marks as built-in
+	reg.Register(&dummyTool{name: "shell_exec", desc: "Shell"})
+	assert.True(t, reg.IsBuiltIn("shell_exec"))
+
+	// RegisterLua does not mark as built-in
+	reg.RegisterLua(&dummyTool{name: "word_count", desc: "Word count"})
+	assert.False(t, reg.IsBuiltIn("word_count"))
+
+	// Unknown tool is not built-in
+	assert.False(t, reg.IsBuiltIn("nonexistent"))
+}
+
+func TestRegistryToolInfo(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&dummyTool{name: "shell_exec", desc: "Execute shell commands"})
+	reg.RegisterLua(&dummyTool{name: "word_count", desc: "Count words"})
+
+	info := reg.ToolInfo()
+	require.Len(t, info, 2)
+
+	// Should be sorted by name
+	assert.Equal(t, "shell_exec", info[0].Name)
+	assert.Equal(t, "Execute shell commands", info[0].Description)
+	assert.True(t, info[0].BuiltIn)
+
+	assert.Equal(t, "word_count", info[1].Name)
+	assert.Equal(t, "Count words", info[1].Description)
+	assert.False(t, info[1].BuiltIn)
+}
+
+func TestRegistryUnregisterClearsBuiltIn(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&dummyTool{name: "tool_a", desc: "Tool A"})
+	assert.True(t, reg.IsBuiltIn("tool_a"))
+
+	reg.Unregister("tool_a")
+	assert.False(t, reg.IsBuiltIn("tool_a"))
+	assert.False(t, reg.Has("tool_a"))
+}
