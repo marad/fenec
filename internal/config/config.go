@@ -68,6 +68,17 @@ func SessionDir() (string, error) {
 	return sessDir, nil
 }
 
+// ToolsDir returns the path to the Lua tools directory.
+// Located at {ConfigDir}/tools/.
+// Does NOT create the directory -- it may not exist until Phase 5.
+func ToolsDir() (string, error) {
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "tools"), nil
+}
+
 // HistoryFile returns the path to the readline history file.
 // Located at {ConfigDir}/history.
 // Creates the config directory if it doesn't exist.
