@@ -98,6 +98,29 @@ func main() {
 	})
 	registry.Register(shellTool)
 
+	// Register file manipulation tools.
+	readTool := tool.NewReadFileTool()
+	registry.Register(readTool)
+
+	writeTool := tool.NewWriteFileTool(func(desc string) bool {
+		if approver != nil {
+			return approver(desc)
+		}
+		return false
+	})
+	registry.Register(writeTool)
+
+	editTool := tool.NewEditFileTool(func(desc string) bool {
+		if approver != nil {
+			return approver(desc)
+		}
+		return false
+	})
+	registry.Register(editTool)
+
+	listDirTool := tool.NewListDirTool()
+	registry.Register(listDirTool)
+
 	// Load Lua tools from tools directory.
 	toolsDir, err := config.ToolsDir()
 	if err != nil {
