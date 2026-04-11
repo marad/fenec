@@ -61,7 +61,7 @@ func TestReadFileOffsetLimit(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(result), &rr))
 	assert.Equal(t, 10, rr.TotalLines)
 	assert.Equal(t, 3, rr.LinesShown)
-	assert.False(t, rr.Truncated)
+	assert.True(t, rr.Truncated) // 3 of 8 available lines returned
 	assert.Contains(t, rr.Content, "line 3")
 	assert.Contains(t, rr.Content, "line 5")
 	assert.NotContains(t, rr.Content, "line 2")
