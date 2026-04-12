@@ -55,11 +55,10 @@ Plans:
   1. User can chat with Fenec through the provider abstraction with identical behavior to v1.0 (streaming, multi-turn, tools)
   2. User can use all existing tools (shell, file, Lua) and see correct tool call/result round-trips through the abstraction
   3. A second provider implementation can be added by implementing the Provider interface without modifying existing code
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
+- [ ] 08-01-PLAN.md -- Create Provider interface, Ollama adapter, and wire REPL + main.go
 
 ### Phase 9: Configuration
 **Goal**: Users can define and manage providers through a TOML config file, with sensible defaults that preserve the zero-config Ollama experience
@@ -120,7 +119,7 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
 | 5. Self-Extension | v1.0 | 2/2 | Complete | 2026-04-11 |
 | 6. File Tools | v1.0 | 2/2 | Complete | 2026-04-12 |
 | 7. Canonical Types | v1.1 | 0/2 | Planning complete | - |
-| 8. Provider Abstraction | v1.1 | 0/0 | Not started | - |
+| 8. Provider Abstraction | v1.1 | 0/1 | Planning complete | - |
 | 9. Configuration | v1.1 | 0/0 | Not started | - |
 | 10. OpenAI-Compatible Client | v1.1 | 0/0 | Not started | - |
 | 11. Model Routing | v1.1 | 0/0 | Not started | - |
