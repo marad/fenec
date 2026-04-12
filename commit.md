@@ -15,8 +15,8 @@ _Commit Message: feat: Add input validation to login form_
 
 1. Stage all the files within current git repository.
 2. Review the changes in current git repository.
-3. Commit the changes.
+3. Commit the changes - prepare a message according to Commit Guidelines.
 
 # Output
 
-4. Output only a short confirmation that the commit is done.
+Output only a short confirmation when the commit is done and the repository is clean.
