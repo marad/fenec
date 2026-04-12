@@ -6,7 +6,8 @@ import "github.com/ollama/ollama/api"
 type Conversation struct {
 	Messages      []api.Message
 	Model         string
-	ContextLength int // Maximum context window size in tokens (0 = not set)
+	ContextLength int  // Maximum context window size in tokens (0 = not set)
+	Think         bool // Enable model thinking/reasoning output
 }
 
 // NewConversation creates a conversation with a system prompt.

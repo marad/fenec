@@ -344,7 +344,7 @@ func (r *REPL) sendMessage(input string) {
 			notifier.Notify()
 			fmt.Fprint(r.rl.Stdout(), token)
 			content.WriteString(token)
-		})
+		}, nil)
 
 		sp.Stop()
 
@@ -428,7 +428,7 @@ func (r *REPL) sendMessage(input string) {
 		notifier.Notify()
 		fmt.Fprint(r.rl.Stdout(), token)
 		content.WriteString(token)
-	})
+	}, nil)
 	sp.Stop()
 
 	if err != nil {

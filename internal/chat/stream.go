@@ -15,8 +15,9 @@ func boolPtr(b bool) *bool { return &b }
 // onToken is called for each content chunk as it arrives.
 // The full assistant message and Ollama Metrics are returned after streaming completes.
 // Context cancellation stops the stream (per D-04: Ctrl+C cancels active generation).
-func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.Tools, onToken func(string)) (*api.Message, *api.Metrics, error) {
+func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.Tools, onToken func(string), onThinking func(string)) (*api.Message, *api.Metrics, error) {
 	var content strings.Builder
+	var thinking strings.Builder
 	var metrics api.Metrics
 	var finalMsg api.Message
 
@@ -25,6 +26,11 @@ func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.T
 		Messages: conv.Messages,
 		Tools:    tools,
 		Truncate: boolPtr(false),
+	}
+
+	// Enable thinking/reasoning output when requested.
+	if conv.Think {
+		req.Think = &api.ThinkValue{Value: true}
 	}
 
 	// Set num_ctx if conversation has a known context length.
@@ -40,6 +46,13 @@ func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.T
 				onToken(resp.Message.Content)
 			}
 		}
+		// Accumulate thinking content from streaming chunks.
+		if resp.Message.Thinking != "" {
+			thinking.WriteString(resp.Message.Thinking)
+			if onThinking != nil {
+				onThinking(resp.Message.Thinking)
+			}
+		}
 		// Accumulate tool calls from streaming chunks. Some models (e.g.,
 		// Gemma 4) send tool calls in a pre-Done chunk while the Done chunk
 		// itself carries zero tool calls.
@@ -51,6 +64,7 @@ func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.T
 			metrics = resp.Metrics
 			finalMsg = resp.Message
 			finalMsg.Content = content.String()
+			finalMsg.Thinking = thinking.String()
 			finalMsg.Role = "assistant"
 		}
 		// Stop early if context is cancelled (per Pitfall 3 from RESEARCH.md).
