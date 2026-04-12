@@ -208,7 +208,12 @@ func main() {
 	}
 	replRef = r
 	r.SetDebug(*debugMode)
-	r.EnableThink()
+
+	// Enable thinking only in interactive mode — in pipe mode the input is
+	// complete and thinking wastes the model's token budget on planning.
+	if !*pipeMode {
+		r.EnableThink()
+	}
 
 	// Pipe mode: read stdin line-by-line, send to model, exit on EOF.
 	if *pipeMode {

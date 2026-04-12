@@ -1,31 +1,7 @@
-# Commit Guidelines
+Stage and commit all changes. Run these commands in order:
 
-When summarizing changes from files, follow these rules:
+1. `git add .`
+2. `git diff --staged` to read the actual changes
+3. `git commit -m "<type>: <description>"` where type is feat/fix/docs/refactor/test/chore
 
-1. **Focus on intent:** Summarize _why_ the changes were made, not just _what_ was changed.
-2. **Be concise:** Keep the summary under two sentences.
-3. **Use conventional commit style:** Adhere to the structure: `feat: <description>` or `fix: <description>`.
-4. **Include context:** Mention which files were affected in the summary.
-
-**Example of desired output:**
-_Summary: Added input validation to the login form to prevent incorrect credentials from being sent to the server. Files affected: login.html, validation.js._
-_Commit Message: feat: Add input validation to login form_
-
-# Task
-
-1. Stage all the files within current git repository.
-2. Review each staged file and output a brief summary of the changes made to the file.
-   Use `git status` to understand which files to summarize.
-   **Step output example**:
-   - fileA.txt - changed the meaning of a paragraph
-   - fileB.py - updated X function to do Y
-3. Use `git commit -m "$MESSAGE"` - make sure the message summarizes overall changes made
-
-# Confirmation
-
-Output only a short confirmation when the commit is done and the repository is clean.
-
-# Hints
-
-- First think thoroughly on what you have to do and create a plan.
-- Follow the plan you created.
+Keep the message under 72 characters. Focus on why, not what.
