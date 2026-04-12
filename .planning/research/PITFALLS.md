@@ -1,320 +1,318 @@
-# Pitfalls Research
+# Domain Pitfalls: Multi-Provider LLM Support
 
-**Domain:** AI agent platform (Go + LuaJIT + Ollama, self-extending via Lua tools)
-**Researched:** 2026-04-11
-**Confidence:** HIGH (verified across official docs, GitHub issues, and multiple community sources)
+**Domain:** Adding multi-provider support (Ollama native + OpenAI-compatible) to existing Ollama-coupled Go application
+**Researched:** 2026-04-12
+**Confidence:** HIGH (verified against codebase audit, Ollama API types, OpenAI API spec, and real-world Go multi-provider projects)
 
 ## Critical Pitfalls
 
-### Pitfall 1: Ollama Silent Context Truncation Destroys Tool Calling
+Mistakes that cause rewrites or major issues.
+
+### Pitfall 1: 228 Ollama Type References -- The Shotgun Decoupling Problem
 
 **What goes wrong:**
-Ollama defaults to a 2048-4096 token context window. When the system prompt (with tool definitions), conversation history, and tool results exceed this, Ollama silently discards the oldest tokens in FIFO order. The system prompt containing tool definitions gets truncated first, meaning the model suddenly "forgets" tools exist mid-conversation. Tool calling stops working with no error message. The agent appears to understand you but can no longer use tools, and there is zero indication this has happened.
+The codebase has 228 references to `api.Message`, `api.Tool`, `api.ToolCall`, `api.ChatRequest`, `api.ChatResponse`, `api.Metrics`, and related Ollama types across 29 Go files. Every package -- chat, tool, session, repl, lua, config -- imports `github.com/ollama/ollama/api` directly. Developers attempt to add a provider interface by wrapping the Ollama client, but the Ollama types remain in every function signature, struct field, and test mock throughout the codebase. The "abstraction" becomes a thin veneer over Ollama -- the second provider (OpenAI-compatible) must either convert to/from Ollama types at every boundary, or you face a massive multi-file refactor that touches every package simultaneously.
 
 **Why it happens:**
-Ollama's default num_ctx is conservative (2048) to work on low-memory hardware. Tool definitions in the system prompt can easily consume 500-1500 tokens for even a modest tool set. Add a few conversation turns with tool call/response pairs, and you blow past the limit within 3-4 exchanges. As the agent self-extends and accumulates more Lua tools, the tool definitions section of the system prompt grows continuously, accelerating the problem.
+This is the classic "coupled by types, not just calls" problem. The coupling is not in the 1 place that calls the Ollama API -- it is in the 29 files that use Ollama's *data types* as their lingua franca. Specifically in this codebase:
+- `chat.Conversation` stores `[]api.Message` -- every message add/read operation uses Ollama types
+- `session.Session` persists `[]api.Message` to JSON -- serialized sessions are in Ollama wire format
+- `tool.Tool` interface returns `api.Tool` and accepts `api.ToolCallFunctionArguments`
+- `tool.Registry` returns `api.Tools` and dispatches via `api.ToolCall`
+- `chat.ChatService` interface exposes `api.Tools`, `*api.Message`, `*api.Metrics` in its signatures
+- `repl.REPL` directly accesses `msg.ToolCalls`, `tc.Function.Name`, `tc.Function.Arguments`, `tc.ID`
 
-**How to avoid:**
-- Set num_ctx explicitly in every API request (minimum 8192 for basic use, 32768+ recommended for agentic workflows with tools).
-- Track token usage: count system prompt tokens + conversation tokens before each request. Warn or summarize when approaching 75% of the context window.
-- Implement conversation compaction: summarize older turns when approaching the limit rather than letting Ollama silently truncate.
-- For self-extending tools: implement a tool pagination or selection strategy so only relevant tools are included in the system prompt for a given task, rather than dumping all tools every time.
+**Consequences:**
+Without addressing this first, every subsequent provider-related change becomes a "change one thing, fix 29 files" exercise. Tests break across every package. The provider abstraction leaks Ollama assumptions everywhere.
 
-**Warning signs:**
-- Agent stops calling tools after working correctly for several turns
-- Agent starts "hallucinating" answers to questions it previously would have used tools for
-- Agent responds "I don't have access to tools" when they are defined
-- Longer conversations degrade faster than short ones
+**Prevention:**
+1. Define your own canonical message types first, before writing any provider code: `fenec.Message`, `fenec.ToolCall`, `fenec.ToolDefinition`, `fenec.StreamMetrics`. Keep them in an internal package with zero external dependencies.
+2. Make the conversion boundary explicit: Ollama provider converts `fenec.Message` to/from `api.Message` in exactly one place. OpenAI provider converts `fenec.Message` to/from OpenAI types in exactly one place.
+3. Migrate the codebase to the canonical types in a dedicated phase BEFORE adding the second provider. This is the hardest part but doing it while also adding OpenAI support doubles the cognitive load and bug surface.
+4. Accept that this is the single largest change in the milestone -- it touches 29 files and every test. Plan accordingly.
 
-**Phase to address:**
-Phase 1 (Ollama integration). This must be solved from the first API call. If deferred, every feature built on top will have intermittent, impossible-to-debug failures.
+**Detection:**
+- `grep -r "github.com/ollama/ollama/api" --include="*.go" | wc -l` shows 29+ files importing Ollama types
+- Any file outside `internal/provider/ollama/` that imports `ollama/api` is a coupling point
+
+**Phase to address:** Phase 1 (canonical types). This must be the very first phase. Everything else depends on it.
 
 ---
 
-### Pitfall 2: Unsandboxed Lua Execution Enables Arbitrary System Access
+### Pitfall 2: Tool Call Arguments -- String vs Object Mismatch Breaks Multi-Turn
 
 **What goes wrong:**
-The agent writes Lua scripts that persist to disk and execute in future sessions. gopher-lua loads all built-in libraries by default, including `io` (file system access), `os` (command execution, environment variables), and `loadfile`/`dofile` (load arbitrary code). A model-generated Lua script -- whether from a hallucination, prompt injection, or honest mistake -- can read/write arbitrary files, execute system commands, or load malicious code from the network. Since scripts persist, a single bad script becomes a permanent backdoor.
+OpenAI returns tool call arguments as a **JSON string** (`"arguments": "{\"command\": \"ls\"}"`) while Ollama returns them as a **parsed JSON object** (`"arguments": {"command": "ls"}`). Ollama's `api.ToolCallFunctionArguments` is a custom ordered-map type with `Get(key)` accessors. OpenAI's `openai-go` returns arguments as a raw JSON string that must be unmarshaled by the caller. When you build a unified interface, the arguments type must accommodate both formats. If you get this wrong, multi-turn tool calling breaks: passing a string-encoded arguments back to Ollama causes `"json: cannot unmarshal string into Go struct field ChatRequest.messages.tool_calls.function.arguments of type api.ToolCallFunctionArguments"`. Passing an object to an OpenAI-compatible endpoint that expects a string causes the reverse failure.
 
 **Why it happens:**
-gopher-lua has no built-in sandboxing. The library explicitly delegates sandboxing to the host application (confirmed in GitHub issue #27 and #11). Developers often defer sandboxing to "later" because the initial development loop of "write script, test script" feels safe. But the moment the model writes and persists a script, the attack surface is open.
+This is a known, documented incompatibility. Ollama's native API was designed for structured tool calling where arguments are already parsed. OpenAI's API treats arguments as opaque JSON strings because their streaming format sends partial argument JSON across chunks. The two approaches are fundamentally different at the wire level, and the conversion is not symmetric -- you lose ordering information when converting Ollama's ordered map to a plain `map[string]any`, and you gain parsing overhead when converting OpenAI's string to a structured type.
 
-**How to avoid:**
-- Use `lua.OpenXXX` functions selectively instead of `OpenLibs()`. Only open `base`, `table`, `string`, `math`. Never open `io`, `os`, `debug`, or `loadfile`/`dofile`.
-- Create a whitelist environment: start with an empty global table and explicitly register only safe functions.
-- Expose Go-implemented functions for controlled I/O: the Lua script calls `fenec.read_file(path)` which goes through Go validation (path allowlisting, size limits) rather than Lua's native `io.open`.
-- Validate all agent-generated Lua before persisting: parse the AST or at minimum scan for forbidden function calls (`os.execute`, `io.open`, `loadfile`, `dofile`, `load`, `rawset`, `rawget`, `debug.*`).
-- Set execution time limits via instruction counting (gopher-lua supports this via context cancellation).
-- Set memory limits on LState creation (use `Options{RegistrySize, CallStackSize}` to cap resource usage).
+**Consequences:**
+- Multi-turn conversations with tool calls fail silently or with cryptic JSON errors
+- Tool results cannot be fed back correctly if the message history contains the wrong arguments format
+- Session persistence (which currently serializes `api.Message` including `ToolCalls`) becomes provider-dependent
 
-**Warning signs:**
-- Lua scripts that import/require unexpected modules
-- Scripts containing `os.execute`, `io.open`, or `loadfile` calls
-- Scripts that write to paths outside the designated tools directory
-- Unexplained file changes or network activity during tool execution
+**Prevention:**
+1. Canonical `ToolCall` type should store arguments as `map[string]any` (parsed, unordered). This is the lowest common denominator both formats can convert to/from.
+2. Each provider's conversion layer must handle: Ollama ordered-map to `map[string]any` (use `ToMap()`), and OpenAI JSON string to `map[string]any` (use `json.Unmarshal`).
+3. When converting back for API calls: Ollama provider must reconstruct `ToolCallFunctionArguments` using `Set()` from the map. OpenAI provider must `json.Marshal` the map back to a string.
+4. Test the full round-trip: model returns tool call -> dispatch tool -> append result to history -> send history back -> model sees correct history. Test this for BOTH providers.
 
-**Phase to address:**
-Phase 1 (LuaJIT integration). Sandboxing must be the very first thing built, before any script execution. Retrofitting sandboxing after scripts already exist is much harder than building it from the start.
+**Detection:**
+- Tool calling works for the first turn but fails on subsequent turns
+- JSON unmarshal errors mentioning `ToolCallFunctionArguments`
+- Provider works in isolation but breaks when switching providers mid-session
+
+**Phase to address:** Phase 1 (canonical types) for the type definition, Phase 2 (provider implementation) for the conversion round-trip testing.
 
 ---
 
-### Pitfall 3: Bash Tool Enables Arbitrary Command Execution Without Guardrails
+### Pitfall 3: Session Serialization Backward Compatibility Breaks
 
 **What goes wrong:**
-The built-in bash tool lets the model execute shell commands. Without constraints, the model can `rm -rf /`, install packages, exfiltrate data, modify system configs, or execute network commands. Even well-intentioned commands can be destructive -- a model trying to "clean up" might delete important files. Combined with the self-extension capability, the model could write a Lua tool that wraps shell access in a way that bypasses any bash-tool-specific restrictions.
+Existing saved sessions (in `~/.config/fenec/sessions/`) contain `[]api.Message` serialized as JSON with Ollama's wire format. This includes fields like `thinking` (Ollama-specific), `tool_calls` with Ollama's nested structure, `tool_call_id`, and `tool_name`. When you switch to canonical `fenec.Message` types, existing session files cannot be deserialized into the new types without a migration layer. Users lose their saved sessions, or worse, the application panics on startup when auto-save loads an incompatible session.
 
 **Why it happens:**
-Using `exec.Command("bash", "-c", userInput)` in Go passes the entire string to bash for interpretation, enabling shell metacharacters, pipes, redirects, and command chaining. The model is not adversarial, but it is unreliable -- it will occasionally generate destructive commands through misunderstanding, hallucination, or overly aggressive problem-solving.
+The `session.Session` struct directly embeds `[]api.Message` and uses `encoding/json` for persistence. The JSON field names and structure are Ollama's wire format. Changing to canonical types changes the JSON schema. There is no version field in the session format to enable migration detection.
 
-**How to avoid:**
-- Never use `sh -c` or `bash -c` with model-generated strings. Use `exec.Command(program, arg1, arg2, ...)` with separate arguments when possible.
-- Implement a confirmation workflow for destructive operations: classify commands and require human approval for anything that modifies the system (writes, deletes, installs, network access).
-- Maintain a command allowlist for auto-approved operations (ls, cat, grep, find, head, tail, wc) and require confirmation for everything else.
-- Set execution timeouts (5-30 seconds default).
-- Run commands in a restricted environment: use a chroot, container, or at minimum a restricted PATH.
-- Log every command with full arguments before execution.
-- Rate-limit command execution to prevent runaway loops.
+**Consequences:**
+- Auto-save file from previous version crashes new version on startup
+- Named saved sessions become unloadable
+- Users lose conversation history (especially painful for the "personal assistant" use case where history has accumulated value)
 
-**Warning signs:**
-- Model generating commands with `sudo`, `rm -rf`, `chmod 777`, `curl | bash`, or `>` redirects to system files
-- Commands that chain with `&&` or `;` to sneak in extra operations
-- Model attempting to install packages or modify system state
-- Repeated failed commands followed by escalating attempts
+**Prevention:**
+1. Add a `"version": 1` field to the session JSON format NOW, before changing anything else. This costs almost nothing and enables future migrations.
+2. Implement a migration function: `migrateV1ToV2(oldJSON) -> newJSON` that converts Ollama-format messages to canonical format. Run this transparently during `Store.Load()`.
+3. Design canonical message types with JSON tags that match common conventions (not Ollama-specific, not OpenAI-specific). Use `role`, `content`, `tool_calls`, `tool_call_id` -- these happen to be shared between both APIs.
+4. Keep a `Provider` field in the session metadata so loaded sessions can be associated with the correct provider for any provider-specific reconstruction needed.
 
-**Phase to address:**
-Phase 1 (bash tool). The bash tool should ship with restrictions from day one. A "just log and execute everything" approach, even for personal use, will bite you the first time the model hallucinates a destructive command.
+**Detection:**
+- App crashes on `/load` or auto-save restore after upgrade
+- `json.Unmarshal` errors in session loading
+- Silent data loss where tool call history in loaded sessions is empty
+
+**Phase to address:** Phase 1, specifically before the type migration. Add version field first, then migrate.
 
 ---
 
-### Pitfall 4: Tool Call Parsing Fragility with Local Models
+### Pitfall 4: Streaming Format Impedance Mismatch
 
 **What goes wrong:**
-Local models (especially smaller ones like 8B parameter variants) produce malformed tool calls: wrong JSON syntax, hallucinated function names, missing required parameters, parameters of wrong types, or tool calls embedded in natural language instead of structured format. The agent crashes, silently ignores the tool call, or enters an error loop. Gemma 4 specifically uses a custom format (`<|tool_call>call:FUNCTION_NAME{...}<tool_call|>`) that differs from OpenAI's format, and Ollama's tool call parser has known issues with certain models in v0.20.0+.
+Ollama streams NDJSON (one JSON object per line) with a callback pattern (`func(api.ChatResponse) error`). OpenAI-compatible endpoints stream SSE (`data: {json}\n\n`) with `data: [DONE]` termination. The current `StreamChat` implementation is deeply coupled to Ollama's callback pattern and `api.ChatResponse` fields (`resp.Message.Content`, `resp.Message.Thinking`, `resp.Message.ToolCalls`, `resp.Done`, `resp.Metrics`). An OpenAI-compatible client cannot use this same streaming pathway because:
+- OpenAI streams use `choices[0].delta.content` (not `message.content`)
+- OpenAI thinking uses `choices[0].delta.reasoning_content` (not `message.thinking`)
+- OpenAI tool calls stream as partial JSON across chunks with index-based assembly
+- OpenAI completion signals via `finish_reason: "stop"` (not a boolean `done` flag)
+- OpenAI token usage is in `usage.prompt_tokens` / `usage.completion_tokens` (not Ollama `Metrics`)
 
 **Why it happens:**
-Local models have less reliable structured output than cloud models (GPT-4, Claude). They were not trained with the same volume of tool-calling examples. The model's tool call format depends on how Ollama's template parses the model's output, and template mismatches cause tool calls to be dropped entirely. With more tools in the prompt, smaller models increasingly confuse tool schemas or generate calls to non-existent tools.
+Streaming is inherently provider-specific at the wire level. The stream parsing logic (SSE vs NDJSON), chunk structure, and signaling conventions are different. The temptation is to try to normalize at the stream-reading level, but the real complexity is in the chunk assembly -- especially for tool calls, which arrive as partial JSON across multiple SSE events in OpenAI format but as complete objects in Ollama format.
 
-**How to avoid:**
-- Implement defensive parsing: wrap all tool call parsing in error recovery. Never assume the model output will be well-formed JSON.
-- Add a validation layer between raw model output and tool dispatch: verify function name exists, all required parameters present, types match schema.
-- Implement graceful degradation: when a tool call fails to parse, feed the error back to the model with context ("Your tool call was malformed: [specific error]. Please try again with this format: [example]").
-- Test with the specific Ollama model version you ship with. Tool calling behavior varies significantly between model versions and quantization levels.
-- Use Ollama's native `/api/chat` endpoint for tool calling rather than the OpenAI-compatible `/v1` endpoint, as the native endpoint handles tool calls more reliably.
-- Consider a retry budget: allow 2-3 parsing retries before giving up on a tool call.
+**Consequences:**
+- Duplicated streaming logic across providers
+- Subtle bugs where tool calls are dropped during streaming because the assembly logic differs
+- Thinking/reasoning content handled incorrectly for one provider
+- Metrics/token counting broken for non-Ollama providers
 
-**Warning signs:**
-- JSON parse errors in tool call responses
-- Model wrapping tool calls in markdown code blocks or natural language
-- Model calling tools that don't exist (hallucinated tool names)
-- Tool calls that work with one model but fail with another
-- Tool calls breaking after Ollama or model updates
+**Prevention:**
+1. Define a canonical streaming callback: `func(chunk StreamChunk) error` where `StreamChunk` has `Content string`, `Thinking string`, `ToolCalls []ToolCall` (fully assembled), `Done bool`, `Metrics StreamMetrics`.
+2. Each provider is responsible for parsing its wire format and emitting canonical `StreamChunk` values. The chunk assembly (especially for OpenAI's partial tool call JSON) happens inside the provider, not in shared code.
+3. The REPL/consumer code ONLY sees `StreamChunk` -- it never touches wire-level types.
+4. For OpenAI tool call streaming: accumulate partial argument strings by index, only emit a `ToolCall` in the chunk when the arguments are complete. This is the trickiest part and must be provider-internal.
 
-**Phase to address:**
-Phase 1 (tool system). Build the validation and error recovery layer from the start. It is not optional when using local models.
+**Detection:**
+- Tool calls work in non-streaming mode but break in streaming mode for one provider
+- Thinking/reasoning output appears for Ollama but not OpenAI (or vice versa)
+- Token counts are zero or wrong for one provider
+
+**Phase to address:** Phase 2 (provider implementations). The canonical `StreamChunk` type should be defined in Phase 1 alongside other canonical types.
 
 ---
 
-### Pitfall 5: Agent Loop Hangs and Runaway Execution
+### Pitfall 5: Context Length Discovery Has No Universal API
 
 **What goes wrong:**
-The agent enters an infinite loop: calling a tool, getting an error, retrying with the same arguments, getting the same error, retrying again. Or oscillating: tool A produces output that triggers tool B, which produces output that triggers tool A. Or retry storms: tool fails, both the agent retry logic and Go-level retry logic fire, multiplying requests. The agent burns resources indefinitely while the user waits. For a CLI app, this manifests as a hung terminal with no output.
+Fenec currently uses Ollama's `Show` API to query `model_info.*.context_length`, which returns the model's maximum context window. This is essential for the `ContextTracker` that manages truncation. OpenAI's API has no equivalent endpoint -- there is no way to query a model's context length via the API. LM Studio's OpenAI-compatible endpoint also does not expose this. Without context length, the tracker either uses a hardcoded fallback (4096 -- dangerously low for modern models) or has to be configured manually per model. If the fallback is too low, aggressive truncation kicks in and drops messages too early. If too high, the provider returns context-exceeded errors.
 
 **Why it happens:**
-Agent loops are the most common failure mode in production AI agents. The model has no inherent concept of "I'm stuck" -- it sees each turn independently. Without explicit progress tracking, the model genuinely believes each retry might succeed. Local models are especially prone to this because they have less sophisticated reasoning about failure recovery.
+This is a genuine API gap, not an implementation oversight. OpenAI intentionally does not expose context limits via API (they've had open feature requests for years with no action). Each provider has different capabilities for model introspection. Ollama is unusually generous here; most OpenAI-compatible providers give you nothing.
 
-**How to avoid:**
-- Implement hard limits: max_tool_calls per turn (e.g., 10), max_turns per conversation exchange (e.g., 20), total execution timeout (e.g., 2 minutes).
-- Deduplicate tool calls: if the same function + same arguments is called twice in a row, inject a reflection prompt ("You called [tool] with the same arguments and got the same error. Try a different approach or explain the problem to the user.").
-- Track progress explicitly: maintain a set of "completed actions" and "failed actions" in the agent context.
-- Implement circuit breakers: after N consecutive tool errors, stop the loop and ask the user for guidance.
-- Always provide a user interrupt mechanism (Ctrl+C handler that cleanly terminates the current agent loop and returns to the REPL prompt).
-- For non-retriable errors (permission denied, file not found), classify the error and tell the model not to retry.
+**Consequences:**
+- Context tracker breaks for non-Ollama providers (uses 4096 fallback)
+- Users experience either premature truncation (fallback too low) or context exceeded errors (fallback too high)
+- Each model from each provider potentially has different context limits, creating a matrix of hardcoded values to maintain
 
-**Warning signs:**
-- Same tool call appearing 3+ times in sequence
-- Agent response time growing unboundedly
-- CPU/memory usage spiking during agent execution
-- User unable to get a response because the agent is "thinking"
+**Prevention:**
+1. Make context length a configurable property per provider+model in the config file. Example: `providers.lmstudio.models.gemma4.context_length = 32768`.
+2. Implement a capability-based discovery: provider interface has `GetContextLength(model) (int, bool)` where the bool indicates "is this a known value or a guess?" Ollama provider queries Show API. OpenAI provider checks config overrides. If neither knows, return a sensible default (8192) with a warning.
+3. Ship a built-in lookup table for well-known models (GPT-4o = 128K, Claude = 200K, Gemma 4 = 128K) as a fallback.
+4. Log a warning when using fallback values so users know to configure context length for optimal behavior.
 
-**Phase to address:**
-Phase 1 (tool execution engine). The loop control and circuit breaker must be in the execution engine from the start. Every feature built on top inherits these protections.
+**Detection:**
+- Context tracking works perfectly with Ollama but produces wrong truncation behavior with other providers
+- Messages being truncated much earlier than expected
+- "Context length exceeded" errors from the provider
+
+**Phase to address:** Phase 2 (provider implementations) for the discovery interface, Phase 3 (config system) for user-configurable overrides.
 
 ---
 
-### Pitfall 6: Self-Extension Without Validation Creates Persistent Bad Tools
+## Moderate Pitfalls
+
+### Pitfall 6: The Leaky "Thinking" Abstraction
 
 **What goes wrong:**
-The agent writes a Lua tool that has a bug, a security flaw, or simply does not work correctly. This tool persists to disk. On next startup, it is loaded and presented to the model as an available tool. The model calls it, it fails or produces wrong results, and the model may even try to "fix" it by writing another broken version. Over time, the tools directory accumulates broken or redundant tools that pollute the system prompt with noise and waste context window tokens. Worse: a subtly broken tool that returns incorrect results (rather than erroring) will silently corrupt the agent's behavior.
+Ollama exposes thinking/reasoning via `Message.Thinking` field and `ChatRequest.Think` control. OpenAI uses `delta.reasoning_content` in streaming and `reasoning_effort` parameter for control. LM Studio may or may not support reasoning depending on the model. The current code has `conv.Think` as a boolean and reads `resp.Message.Thinking` during streaming. A naive abstraction maps these 1:1, but the semantics differ: Ollama's Think is a binary on/off toggle, OpenAI's `reasoning_effort` is a graduated control (`low`/`medium`/`high`), and some providers have no thinking support at all.
 
-**Why it happens:**
-The "write tool, persist to disk, load on startup" pattern has no quality gate. The model is not a reliable programmer -- it generates code that looks correct but has edge cases, type errors, or logic bugs. Without testing, these persist as "capabilities" the model trusts.
+**Prevention:**
+1. Canonical thinking support as `ThinkingMode` enum: `Off`, `On`, `Effort(level)`.
+2. Provider converts to its native format. Ollama: `On` -> `Think: true`, `Effort(any)` -> `Think: true`. OpenAI: `On` -> `reasoning_effort: medium`, `Effort(level)` -> corresponding level.
+3. Make thinking a provider capability that can be queried: `provider.SupportsThinking() bool`.
 
-**How to avoid:**
-- Implement a tool validation pipeline: after the agent writes a Lua script, run it through syntax validation (gopher-lua can parse without executing), then a basic smoke test (execute with test inputs and check it does not crash).
-- Add a tool staging area: new tools go to a "pending" directory, not the active tools directory. Only promote after validation.
-- Include a tool metadata file alongside each Lua script: description, input schema, output schema, creation date, author (agent vs human), test status.
-- Implement tool versioning: when the agent "fixes" a tool, keep the old version. Allow rollback.
-- Set a maximum tool count: if the tools directory grows beyond N tools, prompt the user to review and prune.
-- Include tool health monitoring: track tool call success/failure rates. Flag tools with high failure rates for review.
+**Phase to address:** Phase 2 (provider implementations).
 
-**Warning signs:**
-- Tools directory growing without corresponding user benefit
-- Model frequently calling tools that error out
-- Multiple versions of the same tool (bash_v1.lua, bash_v2.lua, bash_fixed.lua)
-- System prompt growing so large it degrades model performance (circles back to Pitfall 1)
+### Pitfall 7: Tool Definition Schema Differences Between Providers
 
-**Phase to address:**
-Phase 2 or 3 (self-extension). The self-extension feature should not ship without at minimum syntax validation and a staging workflow. "Write directly to active tools" is the path to an unusable tools directory within a week.
+**What goes wrong:**
+Ollama's `api.Tool` uses `api.ToolPropertiesMap` (an ordered map with custom JSON) and `api.PropertyType` (a custom type, not a plain string). OpenAI expects standard JSON Schema for tool parameter definitions with `"type": "string"` as a plain string. The current `tool.Tool` interface returns `api.Tool` which means every built-in tool and every Lua tool is coded to Ollama's specific schema types. Converting between these requires handling the ordered-map wrapper and custom property types.
+
+**Prevention:**
+1. Canonical tool definition should use standard JSON Schema structures -- plain `map[string]any` or a simple struct with `Type string`. Both Ollama and OpenAI can consume standard JSON Schema.
+2. Let each provider convert from canonical to its native format. Ollama provider wraps into `ToolPropertiesMap`. OpenAI provider passes through as-is.
+3. The `tool.Tool` interface should return `fenec.ToolDefinition`, not `api.Tool`.
+
+**Phase to address:** Phase 1 (canonical types), since the `tool.Tool` interface is a foundational type.
+
+### Pitfall 8: Model Listing and Discovery Diverges Per Provider
+
+**What goes wrong:**
+Ollama lists models via `api.Client.List()` returning `ListResponse` with model names, sizes, and digests. OpenAI-compatible endpoints use `GET /v1/models` returning a different schema with `id`, `object`, `owned_by`. LM Studio uses the OpenAI format but with local model names. The current `ChatService.ListModels()` returns `[]string` (just names), which looks provider-agnostic but the model naming conventions differ: Ollama uses `gemma4:latest`, OpenAI uses `gpt-4o-2024-08-06`, LM Studio uses local filenames. The `--model provider/model` syntax requires routing logic that understands which names belong to which provider.
+
+**Prevention:**
+1. Model listing returns `[]ModelInfo{Name, Provider, DisplayName}` not just `[]string`.
+2. Provider prefix is handled at the routing layer, not in the model name itself. Model names stay provider-native internally.
+3. When user specifies `--model ollama/gemma4`, the router knows to use the Ollama provider with model "gemma4". When user specifies `--model lmstudio/deepseek-r2`, the router uses LM Studio provider with model "deepseek-r2".
+
+**Phase to address:** Phase 3 (unified model selection and provider routing).
+
+### Pitfall 9: Error Handling Semantics Differ Per Provider
+
+**What goes wrong:**
+Ollama returns errors as Go errors from the client library with provider-specific messages ("model not found", "context length exceeded"). OpenAI-compatible APIs return HTTP status codes with JSON error bodies (`{"error": {"message": "...", "type": "...", "code": "..."}}`). Rate limiting, authentication failures, model unavailability, and context overflow each have different error formats. Without normalization, error handling in the REPL becomes a mess of provider-specific `if` branches.
+
+**Prevention:**
+1. Define canonical error types: `ErrModelNotFound`, `ErrContextExceeded`, `ErrRateLimit`, `ErrAuth`, `ErrProviderUnavailable`.
+2. Each provider maps its native errors to canonical errors in its conversion layer.
+3. REPL handles only canonical errors with appropriate user-facing messages.
+
+**Phase to address:** Phase 2 (provider implementations).
+
+### Pitfall 10: The "OpenAI-Compatible" Assumption Trap
+
+**What goes wrong:**
+"OpenAI-compatible" does not mean "identical to OpenAI." LM Studio, Ollama's `/v1` endpoint, vLLM, and LocalAI each have their own deviations: LM Studio may fail to parse tool calls from smaller models (returns them in `content` instead of `tool_calls`), Ollama's `/v1` endpoint does not support `tool_choice`, some providers do not support `stream_options.include_usage` for token counting. Building one "OpenAI-compatible" client and assuming it works everywhere leads to subtle failures that only appear with specific providers.
+
+**Prevention:**
+1. Test with every provider you claim to support. "OpenAI-compatible" means "needs testing against this specific provider."
+2. Build provider capability detection: can this provider do tool calling? Streaming? Thinking? Token usage reporting? Make these queryable booleans, not assumptions.
+3. Degrade gracefully: if a provider does not report usage, skip context tracking for that provider. If tool calls come back in `content` instead of `tool_calls`, attempt to parse them from content as a fallback.
+
+**Phase to address:** Phase 2 (provider implementations) for initial support, ongoing through Phase 3.
 
 ---
 
-### Pitfall 7: gopher-lua LState Lifecycle Mismanagement
+## Minor Pitfalls
+
+### Pitfall 11: Ollama-Specific Features Lost in Abstraction
 
 **What goes wrong:**
-gopher-lua's LState is not goroutine-safe. Sharing an LState across goroutines causes data races and crashes. Creating a new LState for every Lua tool invocation wastes memory and time (each LState allocates registry and callstack buffers). LState context leaks (via NewThread/coroutines) cause gradual memory growth that manifests as the process slowly consuming more RAM over hours of use.
+Ollama has features no other provider offers: `keep_alive` to prevent model unloading, `num_ctx` per-request, `Truncate` control, model pulling/management, `/api/ps` for running model inspection. A too-aggressive abstraction strips these out in the name of portability. Users who were happy with Ollama-specific behavior find the abstracted version worse.
 
-**Why it happens:**
-Go developers naturally reach for goroutines and shared state. gopher-lua's API does not enforce single-goroutine access, so it silently corrupts rather than erroring. The context leak in NewThread (GitHub discussion #437) is especially insidious because it only manifests under sustained use.
+**Prevention:**
+Implement provider-specific options as an escape hatch. The canonical `ChatOptions` has common fields, plus a `ProviderOptions map[string]any` for pass-through. Ollama provider checks for `keep_alive`, `num_ctx` in this map. Other providers ignore them.
 
-**How to avoid:**
-- Implement an LState pool (gopher-lua's README shows the pattern): reuse LStates instead of creating new ones, protect the pool with a sync.Mutex.
-- Never share an LState across goroutines. One LState per goroutine, communicate via channels.
-- Configure LState options for your use case: use auto-growing registry and callstack (`Options{RegistrySize: 256, RegistryMaxSize: 0, RegistryGrowStep: 32}`) to balance memory and performance.
-- If running the same Lua scripts repeatedly, share compiled bytecode between LStates (bytecode is read-only and safe to share).
-- Ensure proper LState.Close() on every path (including error paths). Use defer.
-- Monitor Go process RSS over time during development. A slow leak indicates LState or context issues.
+### Pitfall 12: The "Big Bang" Migration Temptation
 
-**Warning signs:**
-- Process memory growing steadily over long sessions
-- Random panics or data corruption during concurrent tool execution
-- "Weird" Lua behavior where global state from one script leaks into another
-- Performance degradation over time within a single session
+**What goes wrong:**
+Developers try to do the type migration (228 references), provider interface, OpenAI client, config system, and `--model` routing all in one massive PR. The PR becomes unreviewable, debugging is impossible because everything changed at once, and you end up in a state where neither the old Ollama path nor the new abstracted path works correctly.
 
-**Phase to address:**
-Phase 1 (LuaJIT integration). The LState management pattern must be established from the first Lua execution. Retrofitting pooling onto a "just create a new LState" approach requires touching every call site.
+**Prevention:**
+1. Phase 1: Introduce canonical types and migrate internal code. At the end of Phase 1, only the Ollama provider exists but it goes through the abstraction.
+2. Phase 2: Add OpenAI-compatible provider. At the end of Phase 2, both providers work but config is hardcoded/flag-driven.
+3. Phase 3: Add config file, `--model` syntax, model discovery. 
+Each phase is independently shippable and testable. 
+
+### Pitfall 13: Test Mock Fragility
+
+**What goes wrong:**
+The current test suite mocks `chatAPI` (an interface matching `api.Client` methods) with Ollama-specific types in the mock responses. When canonical types replace Ollama types in interfaces, every mock in every test file needs updating. If you do this as part of the provider addition rather than as a separate step, you are debugging type conversion logic and test mock updates simultaneously.
+
+**Prevention:**
+The type migration (Phase 1) should include updating all test mocks to use canonical types. This is a mechanical change that should be committed and verified (all tests pass) before any provider logic is added.
 
 ---
 
-## Technical Debt Patterns
+## Phase-Specific Warnings
 
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| Hardcoded Ollama URL (localhost:11434) | Faster initial development | Cannot support remote Ollama, Docker setups, or custom ports | Never -- use a config value from the start, it costs nothing |
-| Dumping all tools into system prompt | Simple implementation | Context window bloat as tools grow, model confusion from too many options | Only with fewer than 5 tools. Must address before self-extension ships |
-| String concatenation for prompt building | Quick to write | Impossible to test, debug, or modify. Prompt injection surface | Never -- use a template system (Go's text/template is fine) |
-| `OpenLibs()` for Lua environment | All Lua features available | Full system access from Lua scripts, security nightmare | Never -- always use selective OpenXXX from day one |
-| Single-file tool storage (no metadata) | Tools are just .lua files | No versioning, no schema, no test status, no way to manage growth | Only in Phase 1 prototyping. Must add metadata before self-extension |
-| Synchronous Ollama calls (no streaming) | Simpler implementation | Terrible UX -- user stares at blank terminal for 5-30 seconds | Only acceptable for tool call responses (not visible to user). Chat responses must stream |
+| Phase Topic | Likely Pitfall | Mitigation |
+|-------------|---------------|------------|
+| Canonical types (Phase 1) | Trying to make canonical types match Ollama or OpenAI exactly | Design canonical types for YOUR domain, not either API. Both APIs convert to/from your types. |
+| Canonical types (Phase 1) | Missing a field that one provider needs | Audit both Ollama Message and OpenAI ChatCompletionMessage fields completely before designing canonical type. Include `Images`, `Thinking`, `ToolCalls`, `ToolCallID`, `ToolName`. |
+| Session migration (Phase 1) | Breaking existing sessions without migration path | Add version field to session format before changing message types. Write V1->V2 migrator. |
+| Ollama provider (Phase 1) | Regression in existing Ollama behavior | Run full existing test suite after migration. Nothing should change in behavior, only in internal types. |
+| OpenAI provider (Phase 2) | Tool call argument round-trip failure | Write integration tests that do: send tools -> model calls tool -> dispatch -> append result -> send back -> model responds. |
+| OpenAI provider (Phase 2) | Streaming tool call assembly bugs | OpenAI streams partial tool call JSON across chunks by index. Build accumulator that waits for complete arguments. |
+| Config system (Phase 3) | Config schema that does not accommodate future providers | Design config as `[providers.NAME]` sections with `type`, `url`, `api_key`, `models` fields. Provider type determines which client to instantiate. |
+| Model routing (Phase 3) | Ambiguous model names across providers | Require `provider/model` syntax for disambiguation. Default provider configurable. Bare model names resolve to default provider only. |
 
-## Integration Gotchas
+## What Specifically Breaks in This Codebase
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| Ollama API | Using the OpenAI-compatible `/v1/chat/completions` endpoint for tool calling | Use Ollama's native `/api/chat` endpoint -- tool call parsing is more reliable, especially for Gemma 4 |
-| Ollama API | Not setting `num_ctx` in requests, relying on model defaults | Always pass `num_ctx` explicitly in every request. Default of 2048 is unusable for agent workflows |
-| Ollama API | Assuming model is loaded and ready | Handle cold start: first request after idle may take 10-30 seconds. Set `keep_alive` parameter to prevent model unloading during a session |
-| Ollama streaming | Parsing each NDJSON chunk independently for tool calls | Accumulate streaming chunks and parse tool calls from the complete response. Partial tool call JSON in a single chunk is malformed |
-| gopher-lua | Registering Go functions that panic on bad input from Lua | Wrap every Go function exposed to Lua with error handling. Lua scripts will pass unexpected types, nil values, and wrong argument counts |
-| gopher-lua | Using global variables in Lua scripts for state | Globals leak between script executions within the same LState. Use local variables or pass state explicitly via function arguments |
-| Gemma 4 on Ollama | Expecting OpenAI-format tool calls | Gemma 4 uses its own tool call format (`<\|tool_call>...<tool_call\|>`). Ollama translates this, but verify your Ollama version handles it correctly |
+A concrete audit of which files need changes and what breaks:
 
-## Performance Traps
-
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| New LState per tool call | Increasing latency, memory growth | LState pool with reuse | Noticeable after 20+ tool calls in a session |
-| Loading all Lua files on startup | Slow startup, wasted memory | Lazy loading: parse tool metadata on startup, load bytecode on first call | Noticeable at 50+ tools |
-| Full conversation history in every request | Token count explodes, context truncation | Conversation compaction: summarize old turns, keep recent N turns verbatim | Breaks at 5-10 tool-heavy conversation turns |
-| Unbounded tool output in context | Single tool returning huge output fills context window | Truncate tool output to a max token count (e.g., 2000 tokens). Summarize if needed | Breaks when bash tool runs `cat` on a large file |
-| Synchronous tool execution | Agent blocks waiting for slow tool (network request, large file) | Set per-tool execution timeouts. Run tool execution in goroutine with context cancellation | First time a Lua tool makes a slow network call |
-| Ollama cold start on every session | 10-30 second delay on first message | Send a lightweight "ping" request on startup to warm the model. Configure `keep_alive` to prevent unloading | Every time the user launches the CLI after Ollama has been idle |
-
-## Security Mistakes
-
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| Agent-written Lua scripts with `os.execute()` access | Arbitrary command execution persisted as a "tool" | Whitelist Lua environment, never expose `os` or `io` libraries |
-| Bash tool accepting raw model output as shell command | Command injection via shell metacharacters (`;`, `&&`, `\|`, backticks) | Use exec.Command with separate args, or validate/allowlist commands |
-| Tool output fed back to model without sanitization | Indirect prompt injection: a file or command output contains instructions that hijack the model | Sanitize tool outputs, strip known injection patterns, consider output length limits |
-| Lua tools directory writable by the running process without constraints | Model writes a tool that modifies or deletes other tools, or writes to paths outside tools dir | Validate write paths, use a dedicated tools directory with no path traversal |
-| No authentication on Ollama API (default) | Any local process can send requests to Ollama and get responses from the loaded model | Not critical for personal use, but be aware if running on shared machines |
-| Persistent Lua tools not reviewed after creation | Subtly malicious or broken tools accumulate, become "trusted" by default | Implement tool review workflow, at minimum log tool creation with diff |
-
-## UX Pitfalls
-
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| No streaming for chat responses | User stares at blank terminal for 5-30 seconds, thinks app is frozen | Stream tokens as they arrive, show a "thinking" indicator during tool execution |
-| No indication when tools are being called | User sees silence, doesn't know if agent is working or stuck | Print tool call indicators: "[Calling bash: ls -la ...]" with a spinner |
-| Tool errors shown as raw tracebacks | User sees gopher-lua internals or Go panics | Catch and format errors: "Tool 'file_reader' failed: file not found at /path" |
-| No way to interrupt a long-running agent loop | User must Ctrl+C the entire process, losing conversation state | Handle SIGINT gracefully: cancel current tool execution, return to REPL prompt |
-| All tools shown in system prompt create confusion | Model calls irrelevant tools for simple tasks, or gets overwhelmed | Implement tool relevance filtering, or let model see a tool index before requesting full schemas |
-| No conversation persistence between sessions | User loses all context when exiting the CLI | Save conversation history to disk, offer session resume |
-
-## "Looks Done But Isn't" Checklist
-
-- [ ] **Ollama integration:** Often missing explicit `num_ctx` setting -- verify context window is adequate (8192+ minimum) and that tool definitions + conversation fit within it
-- [ ] **Tool calling:** Often missing error recovery for malformed tool calls -- verify the agent gracefully handles unparseable model output without crashing
-- [ ] **Bash tool:** Often missing execution timeouts -- verify commands that hang (e.g., `cat /dev/urandom`) get killed after timeout
-- [ ] **Lua sandbox:** Often missing restriction of built-in libraries -- verify `os.execute`, `io.open`, `loadfile`, `dofile` are not available in agent-written scripts
-- [ ] **Streaming:** Often missing partial line handling -- verify that streamed markdown renders correctly and doesn't produce garbled terminal output
-- [ ] **Agent loop:** Often missing termination conditions -- verify the agent cannot call tools indefinitely (set max_tool_calls, max_turns, total_timeout)
-- [ ] **Self-extension:** Often missing syntax validation before persist -- verify a Lua syntax error in agent-written code does not persist a broken tool
-- [ ] **Tool discovery:** Often missing token budget accounting -- verify adding 10+ tools doesn't blow past the context window
-- [ ] **Error handling:** Often missing Go-to-Lua bridge error handling -- verify passing nil or wrong types from Lua to Go-registered functions does not panic
-- [ ] **Conversation history:** Often missing compaction -- verify a 20-turn conversation with tool calls doesn't silently lose its system prompt to context truncation
+| File | Current Ollama Coupling | What Must Change |
+|------|------------------------|------------------|
+| `chat/message.go` | `Conversation.Messages` is `[]api.Message`, all add methods create `api.Message` | Swap to `[]fenec.Message`, update all 6 methods |
+| `chat/client.go` | `ChatService` interface exposes `api.Tools`, `*api.Message`, `*api.Metrics` | Replace with canonical types in interface signature |
+| `chat/stream.go` | `StreamChat` constructs `api.ChatRequest`, reads `api.ChatResponse` fields, returns `*api.Message` | Move request construction into Ollama provider, stream through canonical `StreamChunk` |
+| `chat/context.go` | `TruncateOldest` accesses `conv.Messages[i].Role` (works with any type that has Role) | Should need minimal change if canonical Message also has Role field |
+| `tool/registry.go` | `Tool` interface returns `api.Tool`, accepts `api.ToolCallFunctionArguments`, `api.ToolCall` | Core interface change -- cascades to all 8 built-in tools and LuaTool |
+| `tool/shell.go` | `Definition()` returns `api.Tool`, `Execute()` accepts `api.ToolCallFunctionArguments` | Update to canonical types (repeated for read.go, write.go, edit.go, listdir.go, create.go, update.go, delete.go) |
+| `lua/luatool.go` | `Definition()` returns `api.Tool`, `Execute()` accepts `api.ToolCallFunctionArguments`, `ArgsToLuaTable` converts from Ollama args | Update to canonical types, update Lua bridge conversion |
+| `session/session.go` | `Session.Messages` is `[]api.Message` | Swap to canonical type, add version field, write migration |
+| `session/store.go` | Serializes `[]api.Message` via `json.Encoder` | No code change needed if canonical Message has compatible JSON tags; add migration on Load |
+| `repl/repl.go` | Directly accesses `msg.ToolCalls`, `tc.Function.Name`, `tc.Function.Arguments`, `tc.ID`, `api.Tools` | Update field access to canonical type fields |
+| `main.go` | `chat.NewClient(host)` directly creates Ollama client | Replace with provider factory: `provider.New(config)` |
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Context truncation breaking tools | LOW | Set `num_ctx` higher, implement token counting, restart conversation |
-| Unsandboxed Lua scripts already persisted | MEDIUM | Audit all scripts in tools directory, add sandbox, re-validate existing scripts against new restrictions |
-| Broken tool accumulated in tools dir | LOW | Delete or move to quarantine directory, implement validation pipeline going forward |
-| LState memory leak in long session | LOW | Restart the CLI process. Fix LState lifecycle for next session |
-| Agent loop consuming resources | LOW | Ctrl+C (if handler works), implement circuit breaker for next time |
-| Malicious command executed via bash tool | HIGH | Assess damage, restore from backup. Prevention is the only real strategy here |
-| Model generating prompt injection via tool output | MEDIUM | Sanitize tool outputs, add output filtering layer, consider using separate model context for tool results vs conversation |
-| Tools directory bloated with redundant scripts | MEDIUM | Manual review and pruning session, implement tool health metrics going forward |
-
-## Pitfall-to-Phase Mapping
-
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| Silent context truncation | Phase 1 (Ollama integration) | Token counting test: fill context to 90%, verify no silent truncation and warning is emitted |
-| Unsandboxed Lua execution | Phase 1 (LuaJIT integration) | Security test: Lua script attempts `os.execute`, `io.open` -- verify they fail |
-| Bash command injection | Phase 1 (bash tool) | Security test: model output containing `; rm -rf /` does not execute the second command |
-| Tool call parsing fragility | Phase 1 (tool system) | Fault injection test: feed malformed JSON as tool call, verify graceful error and retry |
-| Agent loop hangs | Phase 1 (tool execution engine) | Stress test: create a tool that always errors, verify agent stops after max retries |
-| Self-extension without validation | Phase 2-3 (self-extension) | Test: agent writes syntactically invalid Lua, verify it does not persist to active tools |
-| LState lifecycle mismanagement | Phase 1 (LuaJIT integration) | Memory test: execute 100 Lua tools, verify RSS is stable (not growing linearly) |
-| Cold start latency | Phase 1 (Ollama integration) | UX test: launch CLI, first response arrives within acceptable time (model pre-warming) |
-| Tool output prompt injection | Phase 2 (tool integration hardening) | Test: tool returns output containing "ignore previous instructions", verify model behavior unchanged |
-| Tools directory bloat | Phase 3 (self-extension maturity) | Metric: track tool count, system prompt token count, tool success rates over time |
+| Attempted big-bang migration, code in broken state | HIGH | Git reset to last working commit. Restart with Phase 1 (types only). |
+| Session files incompatible with new types | LOW | Write migration script, or add fallback JSON unmarshaling that tries both old and new format. |
+| Tool call arguments round-trip broken for one provider | MEDIUM | Add provider-specific integration tests. Debug by printing raw JSON at conversion boundary. |
+| Streaming broken for OpenAI provider | MEDIUM | Implement non-streaming fallback. Debug SSE parsing separately from chunk assembly. |
+| Context tracking wrong for non-Ollama provider | LOW | Use conservative fallback (8192), add config override, log warning. |
+| Provider "abstraction" that is just Ollama types with an interface wrapper | HIGH | This is the biggest risk. If discovered late, requires restarting the type migration. Catch early by ensuring the interface has NO Ollama imports. |
 
 ## Sources
 
-- [Ollama context length documentation](https://docs.ollama.com/context-length)
-- [Ollama tool calling documentation](https://docs.ollama.com/capabilities/tool-calling)
-- [Ollama streaming tool calling blog](https://ollama.com/blog/streaming-tool)
-- [gopher-lua GitHub repository](https://github.com/yuin/gopher-lua)
-- [gopher-lua sandbox discussion (issue #11)](https://github.com/yuin/gopher-lua/issues/11)
-- [gopher-lua filesystem restriction (issue #27)](https://github.com/yuin/gopher-lua/issues/27)
-- [gopher-lua LState pooling (issue #335)](https://github.com/yuin/gopher-lua/issues/335)
-- [gopher-lua memory optimizations (issue #197)](https://github.com/yuin/gopher-lua/issues/197)
-- [gopher-lua context leak discussion (#437)](https://github.com/yuin/gopher-lua/discussions/437)
-- [Gemma 4 function calling documentation](https://ai.google.dev/gemma/docs/capabilities/text/function-calling-gemma4)
-- [Gemma 4 tool calling with Ollama compatibility issues](https://github.com/anomalyco/opencode/issues/20995)
-- [Go command injection prevention (Semgrep)](https://semgrep.dev/docs/cheat-sheets/go-command-injection)
-- [Go command injection (Snyk)](https://snyk.io/blog/understanding-go-command-injection-vulnerabilities/)
-- [Agent infinite loop failure mode (Medium)](https://medium.com/@komalbaparmar007/llm-tool-calling-in-production-rate-limits-retries-and-the-infinite-loop-failure-mode-you-must-2a1e2a1e84c8)
-- [Infinite agent loop patterns](https://www.agentpatterns.tech/en/failures/infinite-loop)
-- [Ollama Gemma 4 tool calling broken in v0.20.0](https://www.gemma4.wiki/ollama/gemma-4-ollama-chat-completion)
-- [OWASP Top 10 for LLM Applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
-- [Ollama model cold start and keep-alive](https://myangle.net/ollama-keep-model-loaded-in-memory/)
-- [Lua sandboxing techniques](http://lua-users.org/wiki/SandBoxes)
-- [Ollama num_ctx silent truncation (issue #2714)](https://github.com/ollama/ollama/issues/2714)
+- [Ollama API types (pkg.go.dev)](https://pkg.go.dev/github.com/ollama/ollama/api) -- Message, ToolCall, ToolCallFunctionArguments struct definitions (HIGH confidence)
+- [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility) -- supported/unsupported features matrix (HIGH confidence)
+- [OpenAI function calling guide](https://developers.openai.com/api/docs/guides/function-calling) -- tool_calls format specification (HIGH confidence)
+- [ToolCallFunctionArguments string vs object bug](https://github.com/aliasrobotics/cai/issues/76) -- JSON unmarshal mismatch between OpenAI string and Ollama object format (HIGH confidence)
+- [Ollama tool_calls arguments format issue](https://github.com/openclaw/openclaw/issues/46679) -- arguments as string breaks multi-turn (HIGH confidence)
+- [Mozilla any-llm-go](https://blog.mozilla.ai/run-openai-claude-mistral-llamafile-and-more-from-one-interface-now-in-go/) -- Go multi-provider abstraction patterns, OpenAI-compatible base provider (MEDIUM confidence)
+- [Multi-provider LLM orchestration guide](https://dev.to/ash_dubai/multi-provider-llm-orchestration-in-production-a-2026-guide-1g10) -- common mistakes in multi-provider setups (MEDIUM confidence)
+- [Same Beat, Different Synths (Mule AI)](https://muleai.io/blog/any-llm-go-mozilla-provider-abstraction/) -- provider abstraction design principles (MEDIUM confidence)
+- [OpenAI model context length limitation](https://community.openai.com/t/request-query-for-a-models-max-tokens/161891) -- no API endpoint for context length (HIGH confidence)
+- [LM Studio tool calling docs](https://lmstudio.ai/docs/developer/openai-compat/tools) -- tool calling support and limitations (HIGH confidence)
+- [OpenAI streaming API](https://developers.openai.com/api/docs/guides/streaming-responses) -- SSE format, delta vs message, finish_reason (HIGH confidence)
+- [Ollama streaming tool calling](https://ollama.com/blog/tool-support) -- NDJSON format, tool calls in pre-Done chunk (HIGH confidence)
+- [Ollama OpenAI compatibility layer internals](https://deepwiki.com/ollama/ollama/3.4-openai-compatibility-layer) -- transformation logic between formats (MEDIUM confidence)
+- [openai-go tool calling example](https://github.com/openai/openai-go/blob/main/examples/chat-completion-tool-calling/main.go) -- official Go SDK tool calling pattern (HIGH confidence)
+- [OpenAI reasoning models](https://developers.openai.com/api/docs/guides/reasoning) -- reasoning_content and reasoning_effort (HIGH confidence)
+- [Ollama context length docs](https://docs.ollama.com/context-length) -- Show API for context length discovery (HIGH confidence)
 
 ---
-*Pitfalls research for: Fenec -- Go + LuaJIT + Ollama AI agent platform with self-extension*
-*Researched: 2026-04-11*
+*Pitfalls research for: Fenec v1.1 -- Multi-provider LLM support*
+*Researched: 2026-04-12*

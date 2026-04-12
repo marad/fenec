@@ -1,455 +1,618 @@
-# Architecture Research
+# Architecture Patterns: Multi-Provider LLM Support
 
-**Domain:** Self-extending AI agent platform (Go + LuaJIT + Ollama)
-**Researched:** 2026-04-11
-**Confidence:** HIGH
+**Domain:** Multi-provider abstraction for existing AI agent platform
+**Researched:** 2026-04-12
+**Overall confidence:** HIGH
 
-## Standard Architecture
+## Current Architecture: Where Ollama Types Leak
 
-### System Overview
+The existing codebase has **six Ollama type contamination points** that must be addressed:
 
-```
-                           Fenec Agent Platform
- ============================================================================
+| Location | Ollama Type Used | Impact |
+|----------|-----------------|--------|
+| `chat.ChatService` interface | `api.Tools`, `api.Message`, `api.Metrics` in `StreamChat` signature | **Critical** -- this is the main abstraction boundary |
+| `chat.Conversation` | `[]api.Message` as the message store | **Critical** -- every component touches this |
+| `tool.Tool` interface | `api.Tool` in `Definition()`, `api.ToolCallFunctionArguments` in `Execute()` | **Critical** -- every tool implements this |
+| `tool.Registry` | `api.Tools` in `Tools()`, `api.ToolCall` in `Dispatch()` | **Critical** -- bridges tools to chat |
+| `session.Session` | `[]api.Message` in `Messages` field (JSON serialized) | **High** -- persisted to disk, migration needed |
+| `repl.REPL.sendMessage` | Direct access to `msg.ToolCalls`, `tc.Function.Name`, `tc.ID` | **Moderate** -- consumer code, follows the interfaces |
 
- +-----------+      +--------------------------------------------------+
- |           |      |                   Agent Core                      |
- |   CLI     |      |                                                  |
- |   REPL    +----->|  +------------+    +-----------+    +----------+ |
- |           |      |  | Conver-    |    | Agent     |    | System   | |
- | (stdin/   |<-----+  | sation    +--->| Loop      +--->| Prompt   | |
- |  stdout)  |      |  | Manager   |    | (ReAct)   |    | Builder  | |
- |           |      |  +-----+------+    +-----+-----+    +----------+ |
- +-----------+      |        |                 |                       |
-                    |        v                 v                       |
-                    |  +-----+------+    +-----+-----+                 |
-                    |  | Message    |    | Tool      |                 |
-                    |  | History    |    | Dispatcher|                 |
-                    |  +------------+    +-----+-----+                 |
-                    +-------------------------|------------------------+
-                                              |
-                         +--------------------+--------------------+
-                         |                    |                    |
-                    +----v-----+        +-----v----+        +-----v----+
-                    | Ollama   |        | Built-in |        | Lua Tool |
-                    | Client   |        | Tools    |        | Runtime  |
-                    +----+-----+        +----------+        +-----+----+
-                         |              | - bash   |              |
-                    +----v-----+        | - write  |        +-----v----+
-                    | Ollama   |        |   _tool  |        | Tool     |
-                    | Server   |        +----------+        | Store    |
-                    | (local)  |                            | (disk)   |
-                    +----------+                            +----------+
-```
+## Recommended Architecture
 
-### Component Responsibilities
+### Design Principle: Own Your Types
 
-| Component | Responsibility | Typical Implementation |
-|-----------|----------------|------------------------|
-| CLI REPL | Read user input, display streamed responses, signal handling | `bufio.Scanner` on stdin, token-by-token stdout writes |
-| Conversation Manager | Maintain message history, enforce context limits, build request payloads | Append-only message slice with rolling window truncation |
-| Agent Loop | Drive the ReAct cycle: call LLM, check for tool calls, dispatch, feed results back, repeat until done | `for` loop with max-iteration guard |
-| System Prompt Builder | Assemble system prompt with tool descriptions and instructions | Template that injects tool registry descriptions |
-| Tool Dispatcher | Route tool calls from model output to correct handler, return results | Map of `name -> handler` with JSON argument parsing |
-| Ollama Client | Send chat requests, stream responses, handle tool call responses | Official `github.com/ollama/ollama/api` package |
-| Built-in Tools | Core tools implemented in Go (bash, write_tool) | Go functions conforming to a `Tool` interface |
-| Lua Tool Runtime | Execute Lua scripts in a sandboxed VM, expose host APIs | `gopher-lua` with selective module loading |
-| Tool Store | Persist Lua scripts to disk, load on startup, manage tool metadata | Directory of `.lua` files with JSON schema sidecars |
-| Message History | Store conversation turns for context | In-memory slice of `api.Message`, no persistence needed initially |
+Introduce Fenec-native message and tool types that sit between the REPL/tool layer and the provider implementations. Each provider adapter translates to/from these types. This is the standard adapter pattern, not a generic LLM framework.
 
-## Recommended Project Structure
+**Why not just use OpenAI types as the universal format?** Because:
+1. Ollama's native API has features OpenAI lacks (thinking/reasoning output, model management, `num_ctx` control)
+2. Tying to OpenAI types creates the same vendor lock-in we're trying to escape
+3. Fenec-native types can evolve independently of any provider's API changes
+
+**Why not use a library like `any-llm-go` or `langchaingo`?** Because:
+1. Fenec has a custom tool system with Lua extensibility -- generic libraries don't model this
+2. The provider count is small (2 protocols: Ollama native, OpenAI-compatible) -- the abstraction cost of a generic library exceeds the integration cost of 2 adapters
+3. Dependency weight: `any-llm-go` pulls 8+ provider SDKs; we need exactly 2
+
+### Component Boundaries
 
 ```
-fenec/
-+-- cmd/
-|   +-- fenec/
-|       +-- main.go              # Entry point, wire dependencies, start REPL
-+-- internal/
-|   +-- agent/
-|   |   +-- agent.go             # Agent struct, ReAct loop, max iterations
-|   |   +-- agent_test.go
-|   |   +-- conversation.go      # Message history management, context window
-|   |   +-- prompt.go            # System prompt assembly with tool descriptions
-|   +-- cli/
-|   |   +-- repl.go              # Input reading, response display, streaming
-|   |   +-- repl_test.go
-|   +-- llm/
-|   |   +-- client.go            # Ollama client wrapper, chat method
-|   |   +-- client_test.go
-|   |   +-- types.go             # Request/response types if wrapping needed
-|   +-- tool/
-|   |   +-- registry.go          # Tool registration, lookup, listing
-|   |   +-- registry_test.go
-|   |   +-- tool.go              # Tool interface definition
-|   |   +-- dispatch.go          # Parse tool calls, route to handlers
-|   |   +-- dispatch_test.go
-|   +-- tools/
-|   |   +-- bash.go              # Built-in: execute shell commands
-|   |   +-- bash_test.go
-|   |   +-- writetool.go         # Built-in: write Lua tool to disk
-|   |   +-- writetool_test.go
-|   +-- lua/
-|   |   +-- runtime.go           # gopher-lua VM setup, sandboxing
-|   |   +-- runtime_test.go
-|   |   +-- loader.go            # Load .lua files from tool store
-|   |   +-- loader_test.go
-|   |   +-- hostapi.go           # Go functions exposed to Lua scripts
-+-- tools/                       # Lua tool store (persisted scripts)
-|   +-- example.lua              # Example: agent-authored tool
-|   +-- example.json             # Tool schema (name, description, params)
-+-- go.mod
-+-- go.sum
+                    main.go (wiring)
+                         |
+                    internal/repl
+                    (uses fenec types)
+                         |
+              +---------+----------+
+              |                    |
+    internal/provider         internal/tool
+    (Provider interface)      (uses fenec types)
+         |         |               |
+   +-----+----+   +-------+   internal/lua
+   |          |            |   (uses fenec types)
+ ollama/    openai/     internal/model
+ adapter    adapter     (fenec-native types)
+   |          |
+ Ollama    openai-go/v3
+ api pkg   (pointed at any
+            compatible endpoint)
 ```
 
-### Structure Rationale
+### New Package: `internal/model` -- Fenec-Native Types
 
-- **cmd/fenec/**: Single binary entry point. Wires all dependencies via constructor injection and starts the REPL. Minimal code -- just composition.
-- **internal/agent/**: Owns the ReAct loop and conversation state. This is the brain -- it calls the LLM, interprets responses, and decides whether to dispatch tools or return to the user.
-- **internal/cli/**: Owns terminal I/O only. Decoupled from agent logic so the agent can be tested without a terminal.
-- **internal/llm/**: Thin wrapper around the Ollama client. Isolates the external dependency behind an interface so tests can mock it and a future provider swap is trivial.
-- **internal/tool/**: The tool system core -- interface definition, registry, and dispatch. No concrete tools live here, just the framework.
-- **internal/tools/**: Concrete built-in tool implementations. Each tool is a separate file implementing the `Tool` interface.
-- **internal/lua/**: LuaJIT runtime management. Handles VM lifecycle, sandboxing, loading scripts, and exposing host APIs to Lua.
-- **tools/**: On-disk directory where agent-authored Lua tools persist. Each tool is a `.lua` file paired with a `.json` schema file.
+This is the keystone package. Everything else depends on it. It depends on nothing.
 
-## Architectural Patterns
-
-### Pattern 1: ReAct Agent Loop
-
-**What:** A loop where the model reasons about what to do, acts (calls tools), observes results, and repeats until it has a final answer or hits a safety limit.
-**When to use:** Always -- this is the core execution model for the agent.
-**Trade-offs:** Simple to implement and debug. The loop is explicit Go code (not a graph or state machine), so standard debugging tools work. Risk of infinite loops requires a max-iteration guard.
-
-**Example:**
 ```go
-func (a *Agent) Run(ctx context.Context, userMessage string) (string, error) {
-    a.conversation.AddUser(userMessage)
+package model
 
-    for i := 0; i < a.maxIterations; i++ {
-        resp, err := a.llm.Chat(ctx, a.buildRequest())
-        if err != nil {
-            return "", fmt.Errorf("llm chat: %w", err)
-        }
+// Message is Fenec's provider-agnostic message type.
+type Message struct {
+    Role       Role       `json:"role"`
+    Content    string     `json:"content"`
+    Thinking   string     `json:"thinking,omitempty"`
+    ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+    ToolCallID string     `json:"tool_call_id,omitempty"`
+}
 
-        a.conversation.AddAssistant(resp.Message)
+type Role string
 
-        if len(resp.Message.ToolCalls) == 0 {
-            return resp.Message.Content, nil // Done -- model gave final answer
-        }
+const (
+    RoleSystem    Role = "system"
+    RoleUser      Role = "user"
+    RoleAssistant Role = "assistant"
+    RoleTool      Role = "tool"
+)
 
-        for _, tc := range resp.Message.ToolCalls {
-            result, err := a.tools.Dispatch(ctx, tc)
-            if err != nil {
-                a.conversation.AddToolResult(tc, fmt.Sprintf("error: %v", err))
-                continue
-            }
-            a.conversation.AddToolResult(tc, result)
-        }
-    }
+// ToolCall represents a model's request to invoke a tool.
+type ToolCall struct {
+    ID       string           `json:"id"`
+    Function ToolCallFunction `json:"function"`
+}
 
-    return "", fmt.Errorf("agent exceeded max iterations (%d)", a.maxIterations)
+type ToolCallFunction struct {
+    Name      string         `json:"name"`
+    Arguments map[string]any `json:"arguments"`
+}
+
+// ToolDef is a provider-agnostic tool definition.
+// The JSON shape matches both OpenAI and Ollama tool schemas.
+type ToolDef struct {
+    Type     string      `json:"type"` // always "function"
+    Function FunctionDef `json:"function"`
+}
+
+type FunctionDef struct {
+    Name        string        `json:"name"`
+    Description string        `json:"description"`
+    Parameters  ParametersDef `json:"parameters"`
+}
+
+type ParametersDef struct {
+    Type       string                 `json:"type"` // "object"
+    Properties map[string]PropertyDef `json:"properties"`
+    Required   []string               `json:"required,omitempty"`
+}
+
+type PropertyDef struct {
+    Type        string `json:"type"`
+    Description string `json:"description"`
+}
+
+// StreamMetrics captures token usage from any provider.
+type StreamMetrics struct {
+    PromptTokens     int
+    CompletionTokens int
 }
 ```
 
-### Pattern 2: Interface-Based Tool Registry
+**Key design choice: `Arguments` is `map[string]any`, not a custom ordered-map type.** The current Ollama `ToolCallFunctionArguments` is a `wk8/go-ordered-map` which is fine for Ollama but the OpenAI client returns a JSON string. `map[string]any` is the simplest common denominator that both can produce. Tool implementations already call `args.Get("key")` which maps trivially to `args["key"]`.
 
-**What:** Tools implement a common interface. The registry maps tool names to handlers. The dispatcher looks up and invokes tools by name from model output.
-**When to use:** Always -- this is how built-in Go tools and Lua-backed tools share a unified dispatch path.
-**Trade-offs:** Clean separation between tool framework and tool implementations. Adding a new tool means implementing the interface and registering it. Slightly more boilerplate than a raw function map, but much more testable and extensible.
+### New Package: `internal/provider` -- Provider Interface
 
-**Example:**
 ```go
-// Tool interface -- every tool (Go or Lua) implements this
+package provider
+
+import (
+    "context"
+    "github.com/marad/fenec/internal/model"
+)
+
+// ChatOptions holds per-request settings that vary by provider.
+type ChatOptions struct {
+    Model         string
+    ContextLength int   // Ollama: sets num_ctx. OpenAI-compat: ignored.
+    Think         bool  // Ollama: sets Think field. OpenAI-compat: ignored.
+    Tools         []model.ToolDef
+}
+
+// Provider is the core abstraction for multi-provider support.
+type Provider interface {
+    // Name returns the provider's configured name (e.g., "ollama", "lmstudio").
+    Name() string
+
+    // StreamChat sends messages and streams the response.
+    // onToken is called for each content chunk.
+    // onThinking is called for thinking/reasoning chunks (nil-safe).
+    // Returns the complete assistant message and metrics.
+    StreamChat(ctx context.Context, messages []model.Message, opts ChatOptions,
+        onToken func(string), onThinking func(string)) (*model.Message, *model.StreamMetrics, error)
+
+    // ListModels returns available model names from this provider.
+    ListModels(ctx context.Context) ([]string, error)
+
+    // Ping verifies the provider is reachable.
+    Ping(ctx context.Context) error
+
+    // SupportsThinking reports whether this provider supports thinking output.
+    SupportsThinking() bool
+}
+```
+
+**Why a single `StreamChat` method instead of separate `Chat` and `StreamChat`?** Because Fenec always streams. The current `ChatService.StreamChat` is the only chat method used. Non-streaming would be dead code.
+
+**Why not `GetContextLength` on the Provider interface?** Because context length discovery is provider-specific. Ollama has `Show()` API for it; OpenAI-compatible APIs don't expose it. Context length comes from config (with optional Ollama auto-detection accessed via the concrete type).
+
+### Model Resolution
+
+```go
+// ModelResolver maps a "provider/model" string to the right Provider + model name.
+type ModelResolver struct {
+    providers       map[string]Provider
+    defaultProvider string
+}
+
+// Resolve parses "provider/model" or plain "model" (uses default provider).
+func (r *ModelResolver) Resolve(spec string) (Provider, string, error) {
+    parts := strings.SplitN(spec, "/", 2)
+    if len(parts) == 2 {
+        p, ok := r.providers[parts[0]]
+        if !ok {
+            return nil, "", fmt.Errorf("unknown provider: %s", parts[0])
+        }
+        return p, parts[1], nil
+    }
+    p, ok := r.providers[r.defaultProvider]
+    if !ok {
+        return nil, "", fmt.Errorf("no default provider configured")
+    }
+    return p, spec, nil
+}
+```
+
+### Provider Implementations
+
+#### `internal/provider/ollama` -- Ollama Native Adapter
+
+Wraps the existing `api.Client`. This is mostly a refactor of the current `chat.Client` with type conversion added.
+
+```go
+package ollama
+
+type OllamaProvider struct {
+    client chatAPI  // same internal interface as current chat.Client
+    name   string
+}
+```
+
+Conversion between types is straightforward because Ollama's types map 1:1 to fenec types:
+- `api.Message.Role` (string) <-> `model.Role` (string typedef) -- same values
+- `api.Message.Content` <-> `model.Message.Content`
+- `api.Message.Thinking` <-> `model.Message.Thinking`
+- `api.ToolCall` <-> `model.ToolCall` -- same field structure
+- `api.Tool` <-> `model.ToolDef` -- same JSON shape
+
+The only nontrivial conversion: `api.ToolCallFunctionArguments` (ordered map) -> `map[string]any`. Simple iteration over the ordered map's entries.
+
+Private conversion functions in the adapter package:
+- `fenecToOllamaMessages([]model.Message) []api.Message`
+- `ollamaToFenecMessage(api.Message) model.Message`
+- `fenecToOllamaTools([]model.ToolDef) api.Tools`
+- `ollamaToFenecMetrics(api.Metrics) model.StreamMetrics`
+
+Ollama-specific capabilities (context length detection via `Show()`, model pull) live on the concrete `OllamaProvider` type, not on the `Provider` interface.
+
+#### `internal/provider/openaicompat` -- OpenAI-Compatible Adapter
+
+Uses `github.com/openai/openai-go/v3` with `option.WithBaseURL()` to point at any compatible endpoint.
+
+```go
+package openaicompat
+
+import (
+    oai "github.com/openai/openai-go/v3"
+    "github.com/openai/openai-go/v3/option"
+)
+
+type OpenAIProvider struct {
+    client *oai.Client
+    name   string
+}
+
+func New(name, baseURL, apiKey string) *OpenAIProvider {
+    opts := []option.RequestOption{
+        option.WithBaseURL(baseURL),
+    }
+    if apiKey != "" {
+        opts = append(opts, option.WithAPIKey(apiKey))
+    }
+    client := oai.NewClient(opts...)
+    return &OpenAIProvider{client: client, name: name}
+}
+```
+
+Key differences from Ollama adapter:
+
+| Aspect | Ollama Adapter | OpenAI-Compatible Adapter |
+|--------|---------------|--------------------------|
+| Streaming | Callback-based (`ChatResponseFunc`) | Iterator-based (`stream.Next()`) with `ChatCompletionAccumulator` |
+| Tool call args | Already parsed (ordered map) | JSON string, needs `json.Unmarshal` -> `map[string]any` |
+| Thinking | Supported via `Message.Thinking` | Not supported, `SupportsThinking()` returns false |
+| Context length | Controllable via `num_ctx` | Server-managed, not controllable |
+| Metrics | `api.Metrics.PromptEvalCount`, `.EvalCount` | `usage.prompt_tokens`, `usage.completion_tokens` via `stream_options` |
+| Tool call IDs | Model-dependent (may be empty) | Always server-generated (`call_xxx` format) |
+| Model listing | `/api/tags` endpoint | `/v1/models` endpoint |
+| Health check | `List()` succeeds | `/v1/models` succeeds |
+
+### Modified Package: `internal/tool` -- Decouple from Ollama
+
+The `Tool` interface and `Registry` switch to fenec-native types:
+
+```go
+// BEFORE (current):
 type Tool interface {
     Name() string
-    Description() string
-    Parameters() json.RawMessage  // JSON Schema for the model
-    Execute(ctx context.Context, args json.RawMessage) (string, error)
+    Definition() api.Tool
+    Execute(ctx context.Context, args api.ToolCallFunctionArguments) (string, error)
 }
 
-// Registry holds all available tools
-type Registry struct {
-    tools map[string]Tool
-}
-
-func (r *Registry) Register(t Tool) {
-    r.tools[t.Name()] = t
-}
-
-func (r *Registry) All() []Tool {
-    // Returns all tools for system prompt generation
-}
-
-func (r *Registry) Dispatch(ctx context.Context, tc api.ToolCall) (string, error) {
-    t, ok := r.tools[tc.Function.Name]
-    if !ok {
-        return "", fmt.Errorf("unknown tool: %s", tc.Function.Name)
-    }
-    argsJSON, _ := json.Marshal(tc.Function.Arguments)
-    return t.Execute(ctx, argsJSON)
+// AFTER:
+type Tool interface {
+    Name() string
+    Definition() model.ToolDef
+    Execute(ctx context.Context, args map[string]any) (string, error)
 }
 ```
 
-### Pattern 3: Lua Tool as Interface Adapter
+**Impact on existing tools (8 files):** Every built-in tool's `Definition()` and `Execute()` needs updating. The changes are mechanical:
+- `Definition()`: Replace `api.Tool{...}` with `model.ToolDef{...}` (same field names)
+- `Execute()`: Replace `args.Get("key")` with `args["key"]` (map lookup instead of ordered-map method)
 
-**What:** Each Lua script on disk is wrapped in a Go struct that implements the `Tool` interface. The Lua runtime executes the script when `Execute` is called.
-**When to use:** For all agent-authored tools. The adapter pattern lets Lua tools be first-class citizens in the same registry as Go tools.
-**Trade-offs:** Lua tools have slightly higher invocation overhead (VM setup per call or pooled VMs). But they enable the core value proposition -- self-extension. The adapter keeps the rest of the system unaware whether a tool is Go or Lua.
-
-**Example:**
+**Impact on `Registry`:**
 ```go
-type LuaTool struct {
-    name        string
-    description string
-    params      json.RawMessage
-    scriptPath  string
-    runtime     *LuaRuntime
-}
+// BEFORE:
+func (r *Registry) Tools() api.Tools
+func (r *Registry) Dispatch(ctx context.Context, call api.ToolCall) (string, error)
 
-func (lt *LuaTool) Name() string              { return lt.name }
-func (lt *LuaTool) Description() string       { return lt.description }
-func (lt *LuaTool) Parameters() json.RawMessage { return lt.params }
+// AFTER:
+func (r *Registry) Tools() []model.ToolDef
+func (r *Registry) Dispatch(ctx context.Context, call model.ToolCall) (string, error)
+```
 
-func (lt *LuaTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
-    return lt.runtime.ExecScript(ctx, lt.scriptPath, args)
+**Impact on `LuaTool`:** Same pattern -- `Definition()` builds `model.ToolDef`, `Execute()` receives `map[string]any`. The `ArgsToLuaTable` helper needs minor adjustment (accepts `map[string]any` instead of ordered map).
+
+### Modified Package: `internal/chat` -- Conversation Keeps Fenec Types
+
+The `chat` package splits:
+1. **Chat client logic** (talking to Ollama) -> moves to `internal/provider/ollama`
+2. **Conversation management** (message list, model tracking) -> stays, uses fenec types
+3. **ContextTracker** -> stays unchanged (only uses int counts)
+
+```go
+// Conversation switches message type:
+type Conversation struct {
+    Messages      []model.Message
+    Model         string
+    ContextLength int
+    Think         bool
 }
 ```
 
-### Pattern 4: Constructor Injection (No Framework)
+The `ChatService` interface is **replaced** by `provider.Provider`. The `chat.Client` type is removed (absorbed into `provider/ollama`).
 
-**What:** Dependencies are passed explicitly through constructors. No DI container, no magic -- just function parameters.
-**When to use:** Always in Go. Wire or Uber fx are overkill for this project size.
-**Trade-offs:** More explicit wiring in `main.go`, but every dependency is visible and testable. Go's implicit interface satisfaction means swapping implementations for tests is trivial.
+### Modified Package: `internal/session` -- Migration Required
 
-**Example:**
+`Session.Messages` changes from `[]api.Message` to `[]model.Message`.
+
+**Migration risk assessment:** The JSON field names are identical between `api.Message` and `model.Message` (`role`, `content`, `tool_calls`, `tool_call_id`). Existing session files will deserialize correctly **except** for `ToolCallFunctionArguments` which uses a custom ordered-map JSON serialization in the Ollama package. Since `map[string]any` deserializes standard JSON objects, and the ordered-map serializes to standard JSON, this should round-trip. Must verify with test.
+
+### Modified: `internal/repl` -- Minimal Changes
+
+The REPL switches from `chat.ChatService` to `provider.Provider`. The agentic loop field access is unchanged because fenec types mirror the Ollama field names:
+
 ```go
-// In cmd/fenec/main.go
-func main() {
-    ollamaClient := llm.NewClient("http://localhost:11434", "gemma3")
-    luaRuntime := lua.NewRuntime(lua.WithSandbox(true))
-    toolRegistry := tool.NewRegistry()
+msg.ToolCalls           // same field name, different type
+tc.Function.Name        // same
+tc.Function.Arguments   // same (but map[string]any instead of ordered map)
+tc.ID                   // same
+```
 
-    // Register built-in tools
-    toolRegistry.Register(tools.NewBash())
-    toolRegistry.Register(tools.NewWriteTool("./tools", toolRegistry, luaRuntime))
+The REPL also needs to pass `ChatOptions` instead of directly building `api.ChatRequest`, but this is a straightforward refactor.
 
-    // Load persisted Lua tools
-    luaTools, _ := lua.LoadToolsFromDir("./tools", luaRuntime)
-    for _, lt := range luaTools {
-        toolRegistry.Register(lt)
-    }
+### New: Config-Driven Provider Definitions
 
-    agent := agent.New(ollamaClient, toolRegistry)
-    repl := cli.NewREPL(agent)
-    repl.Run()
+Extend `internal/config` with TOML-based provider configuration:
+
+```toml
+# ~/.config/fenec/config.toml
+
+default_provider = "ollama"
+
+[providers.ollama]
+type = "ollama"
+url = "http://localhost:11434"
+
+[providers.lmstudio]
+type = "openai"
+url = "http://localhost:1234/v1"
+
+[providers.openai]
+type = "openai"
+url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+```
+
+**Config types:**
+
+```go
+type Config struct {
+    DefaultProvider string                    `toml:"default_provider"`
+    Providers       map[string]ProviderConfig `toml:"providers"`
 }
+
+type ProviderConfig struct {
+    Type      string `toml:"type"`        // "ollama" or "openai"
+    URL       string `toml:"url"`
+    APIKeyEnv string `toml:"api_key_env"` // env var name for API key
+    APIKey    string `toml:"api_key"`     // inline (not recommended)
+}
+```
+
+**Why `api_key_env` instead of just `api_key`?** Config files get committed to dotfile repos. `api_key_env = "OPENAI_API_KEY"` reads from the environment at runtime.
+
+**Backward compatibility:** When no config file exists, default to a single "ollama" provider at `http://localhost:11434`. The app works identically to v1.0 with no config file present.
+
+### `--model provider/model` Syntax
+
+```
+fenec --model gemma4              # Uses default provider
+fenec --model ollama/gemma4       # Explicit provider
+fenec --model lmstudio/qwen3:32b  # LM Studio
+fenec --model openai/gpt-4o      # OpenAI
 ```
 
 ## Data Flow
 
-### Request Flow (Single Turn)
+### Current Flow (Ollama-only)
 
 ```
-User types message
-    |
-    v
-CLI REPL reads line (bufio.Scanner)
-    |
-    v
-Agent.Run(ctx, message)
-    |
-    v
-Conversation Manager appends user message to history
-    |
-    v
-System Prompt Builder assembles:
-  - Base system prompt (role, behavior instructions)
-  - Tool descriptions from Registry.All()
-    |
-    v
-Agent builds ChatRequest{Model, Messages, Tools}
-    |
-    v
-Ollama Client.Chat(ctx, req, streamFn)
-    |
-    v
-Ollama server runs inference, streams tokens
-    |
-    v
-streamFn callback receives ChatResponse chunks
-    |
-    +---> If streaming content: CLI prints tokens as received
-    |
-    +---> If Done=true: check for ToolCalls
-              |
-              +---> No ToolCalls: return content to CLI (turn complete)
-              |
-              +---> Has ToolCalls: enter tool dispatch loop
-                        |
-                        v
-                    For each ToolCall:
-                      Registry.Dispatch(ctx, toolCall)
-                        |
-                        +---> Go tool: execute directly
-                        +---> Lua tool: LuaRuntime.ExecScript()
-                        |
-                        v
-                    Append tool results to conversation history
-                        |
-                        v
-                    Loop back to Agent builds ChatRequest
-                    (next iteration of ReAct loop)
+User input -> REPL -> chat.Client.StreamChat(conv, tools) -> Ollama API
+                          |
+                    api.Message types throughout
 ```
 
-### Self-Extension Flow (Agent Creates New Tool)
+### New Flow (Multi-provider)
 
 ```
-Model decides it needs a tool that doesn't exist
-    |
-    v
-Model calls write_tool with:
-  - name: "tool_name"
-  - description: "what it does"
-  - parameters: {JSON schema}
-  - script: "lua source code"
-    |
-    v
-write_tool handler:
-  1. Validates Lua syntax (compile check, no execute)
-  2. Writes script to tools/tool_name.lua
-  3. Writes schema to tools/tool_name.json
-  4. Creates LuaTool adapter
-  5. Registers new tool in Registry (live, no restart)
-  6. Returns success message to model
-    |
-    v
-Model now sees new tool in next iteration's tool list
-    |
-    v
-Model can call the new tool immediately in the same session
+User input -> REPL -> provider.StreamChat(messages, opts) -> Adapter -> Backend
+                |                                               |
+          model.Message                                   api.Message (Ollama)
+          model.ToolDef                                   OR
+          model.ToolCall                                  openai types
 ```
 
-### Key Data Flows
+The REPL and tool system only see `model.*` types. Provider adapters handle all type conversion internally.
 
-1. **Chat flow:** User message -> conversation history -> system prompt + tools -> Ollama -> streamed response -> display to user. Straightforward request-response with streaming.
-2. **Tool call flow:** Model response with ToolCalls -> dispatcher looks up handler -> execute -> result string -> append to history as tool role message -> re-prompt model. This is the ReAct inner loop.
-3. **Self-extension flow:** Model calls write_tool -> Lua script persisted to disk -> adapter created -> registered in live registry -> immediately available. The tool store on disk is the persistence layer.
-4. **Startup flow:** main.go wires deps -> loads Lua tools from disk -> registers all tools -> starts REPL. Tool discovery happens once at startup, plus dynamically via write_tool.
+## Patterns to Follow
 
-## Scaling Considerations
+### Pattern 1: Adapter with Internal Conversion Functions
 
-| Concern | At Personal Use | At Power Use (many tools) | At Multi-Session |
-|---------|----------------|--------------------------|------------------|
-| Context window | Not a concern -- local models handle single conversations fine | Tool descriptions consume tokens; need tool-list pruning or summarization | Add conversation persistence (SQLite) |
-| Lua VM overhead | Negligible -- create per call | Pool VMs to avoid repeated setup | Pool with per-session isolation |
-| Tool registry size | 5-20 tools, fine as a map | 50+ tools: model struggles to pick correctly; add tool categories or selection | Same issue; consider tool-use history to rank |
-| Response latency | Dominated by model inference time | Same -- tool execution is fast relative to LLM | Same |
+**What:** Each provider adapter has private `toFenec*` and `fromFenec*` functions for type conversion.
+**When:** Every provider implementation.
+**Why:** Keeps conversion logic co-located with the provider that needs it. No conversion logic in shared packages.
 
-### Scaling Priorities
-
-1. **First bottleneck: Context window consumption.** As the agent accumulates tools, their descriptions eat into the context window. Mitigation: keep descriptions terse, and later implement a tool selection pre-pass where the model picks relevant tools before the main prompt.
-2. **Second bottleneck: Tool selection accuracy.** With many Lua tools, the model may hallucinate tool names or pick wrong tools. Mitigation: good naming conventions, clear descriptions, and consider categorization.
-
-## Anti-Patterns
-
-### Anti-Pattern 1: Graph-Based Agent Orchestration
-
-**What people do:** Implement the agent loop as a state machine graph (nodes and edges) like LangGraph.
-**Why it's wrong:** For a single-agent system, this adds abstraction without value. The ReAct loop is a simple `for` loop in Go. Graph abstractions obscure control flow and make debugging harder. Go already has `for`, `if`, and goroutines -- use them.
-**Do this instead:** Plain Go loop with explicit tool dispatch. Use a graph only if you need multi-agent orchestration (Fenec does not).
-
-### Anti-Pattern 2: Unbounded Agent Loop
-
-**What people do:** Let the agent loop run indefinitely without a max iteration limit.
-**Why it's wrong:** Models can enter reasoning loops, repeatedly calling the same tool, or oscillating between tools. Without a guard, this burns compute and never returns.
-**Do this instead:** Set `maxIterations` (start with 10). Log each iteration. Return an error if exceeded. The user can always re-prompt.
-
-### Anti-Pattern 3: Unsandboxed Lua Execution
-
-**What people do:** Give the Lua VM full access to `os`, `io`, `debug`, and `require`.
-**Why it's wrong:** The agent writes Lua code. An AI-authored script with `os.execute("rm -rf /")` should not be possible. Even without malice, bugs in agent-authored code could corrupt state.
-**Do this instead:** Create the LState with `SkipOpenLibs: true`. Open only `base`, `table`, `string`, `math`. Provide host-controlled APIs (HTTP, file read within a sandbox directory) through registered Go functions.
-
-### Anti-Pattern 4: Storing Tool State in the Lua VM
-
-**What people do:** Keep tool state (counters, caches, accumulated data) inside the Lua VM between calls.
-**Why it's wrong:** VM state is fragile -- if you pool or recreate VMs, state is lost. It creates invisible coupling between tool invocations.
-**Do this instead:** Tools should be stateless functions. If a tool needs persistence, it writes to a file or passes data back through the conversation. The conversation history is the state.
-
-### Anti-Pattern 5: Prompt-Injection-Style Tool Definitions
-
-**What people do:** Describe tools only in the system prompt text rather than using Ollama's structured `Tools` field.
-**Why it's wrong:** Ollama's API has first-class `Tools` support with JSON Schema. Using structured tool definitions gives the model a formal contract, not a natural language suggestion. Models trained for tool calling expect the structured format.
-**Do this instead:** Use `api.Tool` structs in `ChatRequest.Tools`. Also describe tools in the system prompt for models that benefit from both.
-
-## Integration Points
-
-### External Services
-
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| Ollama | HTTP API via `github.com/ollama/ollama/api` | Official Go client. Streaming via callback. Default `http://localhost:11434`. |
-| Shell (bash) | `os/exec.Command` | Built-in tool. Run with timeout context. Capture stdout+stderr. |
-| File system | `os` / `io/fs` | Tool store reads/writes. Sandbox Lua to specific directories. |
-
-### Internal Boundaries
-
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| CLI <-> Agent | Method call: `agent.Run(ctx, msg) -> (string, error)` | CLI owns I/O, Agent owns logic. Agent streams via callback for real-time display. |
-| Agent <-> LLM Client | Method call: `client.Chat(ctx, req, fn)` | Behind an interface for testability. Mock in tests. |
-| Agent <-> Tool Registry | Method call: `registry.Dispatch(ctx, toolCall)` | Registry is injected into Agent. Agent never knows tool implementations. |
-| Tool Registry <-> Lua Runtime | Method call: `runtime.ExecScript(ctx, path, args)` | LuaTool adapter bridges the gap. Registry sees Tool interface only. |
-| write_tool <-> Tool Registry | Method call: `registry.Register(newTool)` | write_tool has a reference to the registry for live registration. |
-| write_tool <-> Lua Runtime | Method call: `runtime.CompileCheck(script)` | Syntax validation before persisting. Does not execute. |
-
-## Build Order (Dependencies)
-
-Components must be built in an order that respects their dependencies. The following sequence ensures each component can be tested independently as it is built.
-
-```
-Phase 1: Foundation
-  tool.Tool interface + Registry       (no deps -- pure Go)
-  llm.Client interface + Ollama impl   (depends only on ollama/api)
-  cli.REPL                             (depends only on stdin/stdout)
-
-Phase 2: Agent Core
-  agent.Conversation                   (depends on api.Message types)
-  agent.PromptBuilder                  (depends on tool.Registry)
-  agent.Agent (ReAct loop)             (depends on llm.Client, tool.Registry, Conversation)
-
-Phase 3: Built-in Tools
-  tools.Bash                           (implements tool.Tool, uses os/exec)
-  Wire CLI -> Agent -> Ollama          (first working chat without tools)
-  Wire tool dispatch into agent loop   (first working tool calls)
-
-Phase 4: Lua Runtime
-  lua.Runtime                          (depends on gopher-lua, sandboxing)
-  lua.Loader                           (depends on Runtime, reads disk)
-  lua.LuaTool adapter                  (implements tool.Tool, uses Runtime)
-
-Phase 5: Self-Extension
-  tools.WriteTool                      (depends on Registry, Runtime, file I/O)
-  Startup Lua loading in main.go       (depends on Loader, Registry)
-  Full self-extension loop working     (agent can create + use Lua tools)
+```go
+// internal/provider/ollama/convert.go
+func fenecToOllamaMessages(msgs []model.Message) []api.Message { ... }
+func ollamaToFenecMessage(m api.Message) model.Message { ... }
+func fenecToOllamaTools(defs []model.ToolDef) api.Tools { ... }
 ```
 
-**Build order rationale:** The Tool interface and Registry are pure abstractions with no external deps -- they can be built and tested first. The LLM client wraps an external service but is simple. The Agent loop integrates these two, forming the core. Built-in tools prove the tool system works. Lua is layered on top since it is the most complex component (VM, sandboxing, file I/O). Self-extension comes last because it requires everything else to be working.
+### Pattern 2: Provider Factory from Config
+
+**What:** Factory function creates the right Provider based on config type.
+**When:** Application startup in `main.go`.
+
+```go
+func NewProvider(name string, cfg config.ProviderConfig) (provider.Provider, error) {
+    switch cfg.Type {
+    case "ollama":
+        return ollama.New(name, cfg.URL)
+    case "openai":
+        apiKey := resolveAPIKey(cfg)
+        return openaicompat.New(name, cfg.URL, apiKey)
+    default:
+        return nil, fmt.Errorf("unknown provider type: %s", cfg.Type)
+    }
+}
+```
+
+### Pattern 3: Graceful Degradation for Provider-Specific Features
+
+**What:** Features like thinking output and context length auto-detection work when available, silently skip otherwise.
+**When:** Any provider-specific capability.
+
+```go
+// In REPL:
+if currentProvider.SupportsThinking() {
+    opts.Think = true
+}
+// onThinking callback always passed -- providers that don't support it never call it.
+```
+
+### Pattern 4: Concrete Type Access for Provider-Specific Operations
+
+**What:** Provider-specific operations (Ollama's `GetContextLength`, `Show`) are accessed by type-asserting the concrete provider, not by bloating the interface.
+**When:** `main.go` startup for context length detection.
+
+```go
+// In main.go after creating provider:
+if op, ok := p.(*ollama.OllamaProvider); ok {
+    ctxLen, err := op.GetContextLength(ctx, modelName)
+    // use ctxLen
+}
+```
+
+## Anti-Patterns to Avoid
+
+### Anti-Pattern 1: Using OpenAI Types as the Universal Message Format
+
+**What:** Making everything speak `openai.ChatCompletionMessageParamUnion` internally.
+**Why bad:** Creates dependency on `openai-go` throughout the codebase. Ollama has features (thinking, `num_ctx`) that OpenAI types can't represent. You'd need out-of-band fields.
+**Instead:** Own your types in `internal/model`. Each adapter converts.
+
+### Anti-Pattern 2: Interface Bloat with Provider-Specific Methods
+
+**What:** Adding `GetContextLength()`, `ShowModel()`, `PullModel()` to the Provider interface.
+**Why bad:** Not all providers support these. Methods returning `ErrNotSupported` everywhere.
+**Instead:** Keep Provider small (5 methods). Provider-specific features on concrete type.
+
+### Anti-Pattern 3: Abstracting Streaming Differences
+
+**What:** Creating a generic `StreamReader` or channel-based streaming abstraction.
+**Why bad:** Ollama uses callback streaming. OpenAI-go uses iterator streaming. An abstraction adds latency and complexity for zero benefit -- the Provider interface already hides the mechanism.
+**Instead:** Each adapter uses its native streaming approach, translates to `onToken`/`onThinking` callbacks.
+
+### Anti-Pattern 4: Big-Bang Migration
+
+**What:** Rewriting all packages simultaneously to use fenec types.
+**Why bad:** Massive diff, hard to review, hard to bisect regressions.
+**Instead:** Incremental phase-by-phase approach (see Build Order).
+
+## Suggested Build Order
+
+Dependency direction: `model` (no deps) -> `tool` (deps model) -> `chat/session` (deps model) -> `provider` (deps model) -> REPL (deps both) -> config.
+
+### Phase 1: Foundation Types (`internal/model`)
+
+**Create** `internal/model` with all fenec-native types. No other packages change.
+
+- `Message`, `Role`, `ToolCall`, `ToolCallFunction`
+- `ToolDef`, `FunctionDef`, `ParametersDef`, `PropertyDef`
+- `StreamMetrics`
+- Tests for JSON serialization (validates session persistence compatibility)
+
+**Risk:** Low. Pure addition.
+
+### Phase 2: Decouple Tool System (`internal/tool`, `internal/lua`)
+
+**Modify** `Tool` interface, all built-in tools, `LuaTool`, and `Registry` to use fenec types.
+
+8 tool files + registry + luatool change. Each change is mechanical type substitution.
+
+**Risk:** Medium (many files, small changes each). Fully testable.
+
+### Phase 3: Decouple Conversation and Session
+
+**Modify** `Conversation` to use `[]model.Message`.
+**Modify** `Session` to use `[]model.Message`.
+**Test** existing session file deserialization.
+
+**Risk:** Medium. Session persistence compatibility must be verified.
+
+### Phase 4: Provider Interface and Ollama Adapter
+
+**Create** `internal/provider` with `Provider` interface and `ModelResolver`.
+**Create** `internal/provider/ollama` wrapping existing Ollama client logic.
+**Modify** REPL to use `Provider` instead of `ChatService`.
+
+At this point: app works exactly as before, through the new abstraction.
+
+**Risk:** Medium. Ollama adapter is refactored tested code.
+
+### Phase 5: OpenAI-Compatible Adapter
+
+**Create** `internal/provider/openaicompat` using `openai-go/v3`.
+**Add** dependency: `go get github.com/openai/openai-go/v3`.
+**Test** against Ollama's `/v1/` endpoint and optionally LM Studio.
+
+**Risk:** Medium. New dependency, new streaming model, but isolated.
+
+### Phase 6: Config and CLI Integration
+
+**Add** TOML config file with provider definitions.
+**Add** `--model provider/model` parsing.
+**Add** provider factory in `main.go`.
+**Add** model discovery across providers.
+
+**Risk:** Low-Medium. Outermost layer, depends on everything else.
+
+### Phase ordering rationale
+
+- Phase 1 before 2: Tools need types to exist before referencing them.
+- Phase 2 before 3: Tool system is the most complex consumer; validates type design.
+- Phase 3 before 4: Conversation must use fenec types before provider can return them.
+- Phase 4 before 5: Ollama adapter validates Provider interface with known-working code.
+- Phase 5 before 6: OpenAI adapter must work before config-driven selection is useful.
+- Phase 6 last: Config/CLI are outermost; depend on everything else.
+
+## Component Change Summary
+
+| Component | Status | Nature of Change |
+|-----------|--------|-----------------|
+| `internal/model` | **NEW** | Fenec-native types package |
+| `internal/provider` | **NEW** | Provider interface + ModelResolver |
+| `internal/provider/ollama` | **NEW** | Ollama adapter (refactored from chat.Client) |
+| `internal/provider/openaicompat` | **NEW** | OpenAI-compatible adapter (openai-go/v3) |
+| `internal/tool` (all 8 tool files) | **MODIFIED** | `api.Tool` -> `model.ToolDef`, `api.ToolCallFunctionArguments` -> `map[string]any` |
+| `internal/tool/registry.go` | **MODIFIED** | `api.Tools` -> `[]model.ToolDef`, `api.ToolCall` -> `model.ToolCall` |
+| `internal/lua/luatool.go` | **MODIFIED** | Same type switch as tool package |
+| `internal/lua/convert.go` | **MODIFIED** | `ArgsToLuaTable` takes `map[string]any` |
+| `internal/chat/message.go` | **MODIFIED** | `Conversation.Messages` uses `[]model.Message` |
+| `internal/chat/client.go` | **REMOVED** | Logic moves to `internal/provider/ollama` |
+| `internal/chat/stream.go` | **REMOVED** | Logic moves to `internal/provider/ollama` |
+| `internal/chat/context.go` | **UNCHANGED** | Only uses ints, no provider types |
+| `internal/session/session.go` | **MODIFIED** | `Messages` field type change |
+| `internal/repl/repl.go` | **MODIFIED** | Uses `provider.Provider` instead of `chat.ChatService` |
+| `internal/config/config.go` | **MODIFIED** | Provider config types, TOML parsing |
+| `main.go` | **MODIFIED** | Provider factory, config loading, model resolver wiring |
+
+## Scalability Considerations
+
+| Concern | 2 providers (now) | 5+ providers (future) |
+|---------|-------------------|----------------------|
+| Provider interface | Simple, works fine | Still fine -- the OpenAI-compat adapter covers most backends |
+| Type conversion | Manual per adapter | 2 adapters handle unlimited backends (Ollama native + OpenAI-compat) |
+| Config | TOML with manual sections | TOML still works |
+| Testing | Mock provider per test | Shared contract test suite per provider |
+
+The "2 protocol adapters" architecture is key: the OpenAI-compatible adapter covers LM Studio, OpenAI, Anthropic (via proxy), Ollama's `/v1/`, and any other compatible endpoint. Adding a "new provider" is just adding a TOML section, not writing code.
 
 ## Sources
 
-- [Ollama Go API package](https://pkg.go.dev/github.com/ollama/ollama/api) -- Official Go client with Chat, Tool, Message structs (HIGH confidence)
-- [Ollama tool calling docs](https://docs.ollama.com/capabilities/tool-calling) -- Tool definition format, conversation loop pattern (HIGH confidence)
-- [Implementing LLM Tool-calling with Go and Ollama](https://dev.to/calvinmclean/how-to-implement-llm-tool-calling-with-go-and-ollama-237g) -- Practical Go implementation of the tool calling loop (MEDIUM confidence)
-- [Go AI Agent Library architecture analysis](https://www.vitaliihonchar.com/insights/go-ai-agent-library) -- ReAct loop in Go, rejection of graph abstractions (MEDIUM confidence)
-- [Building Effective Agents (Anthropic)](https://www.anthropic.com/research/building-effective-agents) -- Augmented LLM patterns, workflow vs agent patterns, tool engineering (HIGH confidence)
-- [gopher-lua](https://github.com/yuin/gopher-lua) -- Lua 5.1 VM in Go, selective module loading for sandboxing (HIGH confidence)
-- [gopher-lua sandbox discussion](https://github.com/yuin/gopher-lua/issues/55) -- SkipOpenLibs + selective OpenXXX for security (MEDIUM confidence)
-- [Self-Learning AI Agent Architecture](https://www.contextstudios.ai/blog/how-to-build-a-self-learning-ai-agent-system-our-actual-architecture) -- Persistent tool/skill files, file-based memory (MEDIUM confidence)
-- [Context Window Management](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) -- Message history strategies, rolling buffers (HIGH confidence)
-- [Go Project Layout](https://go.dev/doc/modules/layout) -- Official Go module layout guidance (HIGH confidence)
-- [Go AI Agent Frameworks 2026](https://reliasoftware.com/blog/golang-ai-agent-frameworks) -- Ecosystem overview of Go agent frameworks (MEDIUM confidence)
-
----
-*Architecture research for: Fenec -- self-extending AI agent platform*
-*Researched: 2026-04-11*
+- [openai-go GitHub repository](https://github.com/openai/openai-go) -- v3.31.0, import path `github.com/openai/openai-go/v3` (HIGH confidence)
+- [openai-go option package](https://pkg.go.dev/github.com/openai/openai-go/option) -- `WithBaseURL`, `WithAPIKey` (HIGH confidence)
+- [openai-go tool calling example](https://github.com/openai/openai-go/blob/main/examples/chat-completion-tool-calling/main.go) -- message types and flow (HIGH confidence)
+- [openai-go streaming accumulator](https://github.com/openai/openai-go/blob/main/examples/chat-completion-accumulating/main.go) -- `ChatCompletionAccumulator` pattern (HIGH confidence)
+- [Ollama OpenAI compatibility docs](https://docs.ollama.com/api/openai-compatibility) -- supported endpoints and limitations (HIGH confidence)
+- [LM Studio tool calling docs](https://lmstudio.ai/docs/developer/openai-compat/tools) -- OpenAI-compatible tool format (HIGH confidence)
+- [any-llm-go by Mozilla](https://blog.mozilla.ai/run-openai-claude-mistral-llamafile-and-more-from-one-interface-now-in-go/) -- multi-provider abstraction patterns, evaluated and rejected (MEDIUM confidence)
+- [Provider Strategy pattern](https://dev.to/daniloab/how-to-integrate-multiple-llm-providers-without-turning-your-codebase-into-a-mess-provider-36g9) -- design patterns reference (MEDIUM confidence)
+- Existing codebase: `internal/chat/`, `internal/tool/`, `internal/repl/`, `internal/session/` -- direct code review (HIGH confidence)
