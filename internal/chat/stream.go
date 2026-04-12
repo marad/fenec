@@ -28,10 +28,9 @@ func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.T
 		Truncate: boolPtr(false),
 	}
 
-	// Enable thinking/reasoning output when requested.
-	if conv.Think {
-		req.Think = &api.ThinkValue{Value: true}
-	}
+	// Explicitly set thinking — nil means "model default" which is on for
+	// thinking-capable models like Gemma 4.
+	req.Think = &api.ThinkValue{Value: conv.Think}
 
 	// Set num_ctx if conversation has a known context length.
 	if conv.ContextLength > 0 {

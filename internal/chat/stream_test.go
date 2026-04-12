@@ -442,7 +442,8 @@ func TestStreamChatThinkDisabledByDefault(t *testing.T) {
 	_, _, err := client.StreamChat(context.Background(), conv, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, capturedReq)
-	assert.Nil(t, capturedReq.Think)
+	require.NotNil(t, capturedReq.Think)
+	assert.Equal(t, false, capturedReq.Think.Value)
 }
 
 func TestStreamChatPassesTools(t *testing.T) {
