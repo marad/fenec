@@ -22,9 +22,10 @@ import (
 func main() {
 	// Parse flags (per D-16: --host flag to override default).
 	host := flag.String("host", "", "Ollama server address (default: localhost:11434)")
-	pipeMode := flag.Bool("pipe", false, "Read lines from stdin, send each to model, exit on EOF")
+	pipeMode := flag.Bool("pipe", false, "Read all stdin as a single message and send to model, exit on EOF")
 	debugMode := flag.Bool("debug", false, "Show tool call results and other debug output")
 	yoloMode := flag.Bool("yolo", false, "Auto-approve all dangerous commands (use with caution)")
+	lineByLine := flag.Bool("line-by-line", false, "In pipe mode, send each stdin line as a separate message (default: send all stdin as one message)")
 	flag.Parse()
 
 	// Detect whether stdin is a terminal (interactive) or a pipe/redirect.
@@ -210,7 +211,7 @@ func main() {
 
 	// Pipe mode: read stdin line-by-line, send to model, exit on EOF.
 	if *pipeMode {
-		if err := r.RunPipe(os.Stdin); err != nil {
+		if err := r.RunPipe(os.Stdin, *lineByLine); err != nil {
 			fmt.Fprintln(os.Stderr, render.FormatError(err.Error()))
 			os.Exit(1)
 		}
