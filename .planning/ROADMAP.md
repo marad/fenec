@@ -58,7 +58,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 08-01-PLAN.md -- Create Provider interface, Ollama adapter, and wire REPL + main.go
+- [x] 08-01-PLAN.md -- Create Provider interface, Ollama adapter, and wire REPL + main.go
 
 ### Phase 9: Configuration
 **Goal**: Users can define and manage providers through a TOML config file, with sensible defaults that preserve the zero-config Ollama experience

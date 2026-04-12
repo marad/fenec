@@ -9,8 +9,8 @@ Requirements for multi-provider support. Each maps to roadmap phases.
 
 ### Provider Abstraction
 
-- [ ] **PROV-01**: User can chat with Fenec using any configured provider without knowing the underlying protocol
-- [ ] **PROV-02**: User experiences identical tool calling behavior regardless of which provider is active
+- [x] **PROV-01**: User can chat with Fenec using any configured provider without knowing the underlying protocol
+- [x] **PROV-02**: User experiences identical tool calling behavior regardless of which provider is active
 - [x] **PROV-03**: User's existing Ollama workflow works exactly as before with zero configuration changes
 
 ### OpenAI-Compatible Support
@@ -61,8 +61,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROV-01 | Phase 8 | Pending |
-| PROV-02 | Phase 8 | Pending |
+| PROV-01 | Phase 8 | Complete |
+| PROV-02 | Phase 8 | Complete |
 | PROV-03 | Phase 7 | Complete |
 | OAIC-01 | Phase 10 | Pending |
 | OAIC-02 | Phase 10 | Pending |

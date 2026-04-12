@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Provider Support
 status: unknown
-stopped_at: Completed 07-02-PLAN.md (type migration)
-last_updated: "2026-04-12T19:14:13.006Z"
+stopped_at: Completed 08-01-PLAN.md (provider abstraction)
+last_updated: "2026-04-12T20:33:52.518Z"
 last_activity: 2026-04-12
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 2
+  total_plans: 3
+  completed_plans: 3
 ---
 
 # Project State
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
-**Current focus:** Phase 07 — canonical-types
+**Current focus:** Phase 08 — provider-abstraction
 
 ## Current Position
 
-Phase: 8
-Plan: Not started
+Phase: 08 (provider-abstraction) — EXECUTING
+Plan: 1 of 1
 
 ## Performance Metrics
 
@@ -49,6 +49,7 @@ Plan: Not started
 *Updated after each plan completion*
 | Phase 07-canonical-types P01 | 2min | 1 tasks | 6 files |
 | Phase 07-canonical-types P02 | 10min | 2 tasks | 29 files |
+| Phase 08-provider-abstraction P01 | 5min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,8 @@ Recent decisions affecting current work:
 - [Phase 07-canonical-types]: Canonical model types use plain maps (map[string]ToolProperty, map[string]any) instead of Ollama ordered maps for simplicity
 - [Phase 07-canonical-types]: Used mdl alias for internal/model in chat package to avoid parameter name shadowing
 - [Phase 07-canonical-types]: Conversion functions placed in stream.go as the adapter boundary between canonical types and ollama/api
+- [Phase 08-provider-abstraction]: Provider interface with 5 methods (Name, ListModels, Ping, StreamChat, GetContextLength) and ChatRequest type decoupled from Conversation
+- [Phase 08-provider-abstraction]: Only internal/provider/ollama imports ollama/api -- all other packages use provider.Provider interface
 
 ### Pending Todos
 
@@ -89,5 +92,5 @@ None yet.
 ## Session Continuity
 
 Last activity: 2026-04-12
-Stopped at: Completed 07-02-PLAN.md (type migration)
+Stopped at: Completed 08-01-PLAN.md (provider abstraction)
 Resume file: None
