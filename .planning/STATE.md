@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-04-12T05:38:34.652Z"
+stopped_at: Completed quick task 260412-etg (pipe mode batch stdin)
+last_updated: "2026-04-12T08:45:04.957Z"
 last_activity: 2026-04-12
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 14
-  completed_plans: 14
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -107,6 +107,7 @@ Recent decisions affecting current work:
 - [Phase 06]: Truncated flag reflects whether more lines exist beyond returned lines, regardless of explicit/default limit
 - [Phase 06]: WriteFileTool and EditFileTool share identical approval gating pattern with ShellTool
 - [Phase 06]: pathcheck resolveWithAncestor walks up to first existing ancestor for deep mkdir -p paths
+- [Phase quick]: Extract readAllInput as package-level helper for testability
 
 ### Pending Todos
 
@@ -117,6 +118,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260411-tbx | Style tool call output gray and show results only in debug mode | 2026-04-11 | 21dad26 | [260411-tbx](./quick/260411-tbx-style-tool-call-output-gray-and-show-res/) |
+| 260412-etg | Change pipe mode to read all stdin by default, add --line-by-line flag | 2026-04-12 | fc6fc68 | [260412-etg](./quick/260412-etg-change-pipe-mode-read-all-stdin-by-defau/) |
 
 ### Roadmap Evolution
 
@@ -130,5 +132,5 @@ None yet.
 ## Session Continuity
 
 Last activity: 2026-04-12
-Stopped at: Completed 06-02-PLAN.md
+Stopped at: Completed quick task 260412-etg (pipe mode batch stdin)
 Resume file: None
