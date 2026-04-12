@@ -7,6 +7,7 @@ require (
 	github.com/briandowns/spinner v1.23.2
 	github.com/chzyer/readline v1.5.1
 	github.com/ollama/ollama v0.20.5
+	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/vadv/gopher-lua-libs v0.8.0
 	github.com/yuin/gopher-lua v1.1.2

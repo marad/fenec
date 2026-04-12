@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"time"
 
+	pflag "github.com/spf13/pflag"
 	"golang.org/x/term"
 
 	"github.com/marad/fenec/internal/chat"
@@ -21,12 +21,32 @@ import (
 
 func main() {
 	// Parse flags (per D-16: --host flag to override default).
-	host := flag.String("host", "", "Ollama server address (default: localhost:11434)")
-	pipeMode := flag.Bool("pipe", false, "Read all stdin as a single message and send to model, exit on EOF")
-	debugMode := flag.Bool("debug", false, "Show tool call results and other debug output")
-	yoloMode := flag.Bool("yolo", false, "Auto-approve all dangerous commands (use with caution)")
-	lineByLine := flag.Bool("line-by-line", false, "In pipe mode, send each stdin line as a separate message (default: send all stdin as one message)")
-	flag.Parse()
+	host := pflag.StringP("host", "H", "", "Ollama server address (default: localhost:11434)")
+	pipeMode := pflag.BoolP("pipe", "p", false, "Read all stdin as a single message and send to model")
+	debugMode := pflag.BoolP("debug", "d", false, "Show tool call results and other debug output")
+	yoloMode := pflag.BoolP("yolo", "y", false, "Auto-approve all dangerous commands (use with caution)")
+	lineByLine := pflag.Bool("line-by-line", false, "In pipe mode, send each stdin line separately (default: batch)")
+	showVersion := pflag.BoolP("version", "v", false, "Print version and exit")
+
+	pflag.Usage = func() {
+		fmt.Fprintf(os.Stderr, `fenec - AI assistant powered by local Ollama models
+
+Usage:
+  fenec                    Start interactive chat
+  echo "prompt" | fenec    Send piped input to model
+  fenec --yolo             Auto-approve all tool commands
+
+Flags:
+`)
+		pflag.PrintDefaults()
+	}
+
+	pflag.Parse()
+
+	if *showVersion {
+		fmt.Printf("fenec %s\n", config.Version)
+		os.Exit(0)
+	}
 
 	// Detect whether stdin is a terminal (interactive) or a pipe/redirect.
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
