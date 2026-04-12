@@ -8,6 +8,8 @@ import (
 	"os"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/marad/fenec/internal/chat"
 	"github.com/marad/fenec/internal/config"
 	feneclua "github.com/marad/fenec/internal/lua"
@@ -22,7 +24,16 @@ func main() {
 	host := flag.String("host", "", "Ollama server address (default: localhost:11434)")
 	pipeMode := flag.Bool("pipe", false, "Read lines from stdin, send each to model, exit on EOF")
 	debugMode := flag.Bool("debug", false, "Show tool call results and other debug output")
+	yoloMode := flag.Bool("yolo", false, "Auto-approve all dangerous commands (use with caution)")
 	flag.Parse()
+
+	// Detect whether stdin is a terminal (interactive) or a pipe/redirect.
+	interactive := term.IsTerminal(int(os.Stdin.Fd()))
+
+	// Auto-enable pipe mode when stdin is not a terminal and --pipe was not explicitly set.
+	if !interactive && !*pipeMode {
+		*pipeMode = true
+	}
 
 	// Determine host.
 	ollamaHost := config.DefaultHost
@@ -178,7 +189,22 @@ func main() {
 	defer r.Close()
 
 	// Wire the approval function and REPL reference now that REPL is created.
-	approver = r.ApproveCommand
+	if *yoloMode {
+		// --yolo: auto-approve everything, works in both interactive and pipe modes.
+		approver = func(command string) bool {
+			fmt.Fprintf(os.Stderr, "[yolo] auto-approved: %s\n", command)
+			return true
+		}
+	} else if !interactive {
+		// Non-interactive (pipe) without --yolo: auto-deny with clear message.
+		approver = func(command string) bool {
+			fmt.Fprintf(os.Stderr, "[denied] %s — non-interactive mode. Use --yolo to auto-approve.\n", command)
+			return false
+		}
+	} else {
+		// Interactive terminal: prompt user as normal.
+		approver = r.ApproveCommand
+	}
 	replRef = r
 	r.SetDebug(*debugMode)
 
