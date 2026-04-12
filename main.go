@@ -13,6 +13,7 @@ import (
 	"github.com/marad/fenec/internal/chat"
 	"github.com/marad/fenec/internal/config"
 	feneclua "github.com/marad/fenec/internal/lua"
+	"github.com/marad/fenec/internal/provider/ollama"
 	"github.com/marad/fenec/internal/render"
 	"github.com/marad/fenec/internal/repl"
 	"github.com/marad/fenec/internal/session"
@@ -64,25 +65,25 @@ Flags:
 		ollamaHost = *host
 	}
 
-	// Create Ollama client.
-	client, err := chat.NewClient(ollamaHost)
+	// Create Ollama provider.
+	p, err := ollama.New(ollamaHost)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, render.FormatError(
-			fmt.Sprintf("Failed to create client: %v", err)))
+			fmt.Sprintf("Failed to create provider: %v", err)))
 		os.Exit(1)
 	}
 
 	// Health check (per D-14: if Ollama unreachable, show error with fix instructions and exit).
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.Ping(ctx); err != nil {
+	if err := p.Ping(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, render.FormatError(
 			fmt.Sprintf("Cannot connect to Ollama at %s. Is it running? Start with: ollama serve\n\nDetails: %v", ollamaHost, err)))
 		os.Exit(1)
 	}
 
 	// Get available models and select first (per D-09).
-	models, err := client.ListModels(ctx)
+	models, err := p.ListModels(ctx)
 	if err != nil || len(models) == 0 {
 		fmt.Fprintln(os.Stderr, render.FormatError(
 			"No models available. Pull one with: ollama pull gemma4"))
@@ -119,7 +120,7 @@ Flags:
 	}
 
 	// Query model's context window size.
-	ctxLen, err := client.GetContextLength(ctx, defaultModel)
+	ctxLen, err := p.GetContextLength(ctx, defaultModel)
 	if err != nil {
 		// Non-fatal: use fallback.
 		ctxLen = 4096
@@ -223,7 +224,7 @@ Flags:
 	}
 
 	// Create and run REPL.
-	r, err := repl.NewREPL(client, defaultModel, systemPrompt, tracker, store, registry)
+	r, err := repl.NewREPL(p, defaultModel, systemPrompt, tracker, store, registry)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, render.FormatError(
 			fmt.Sprintf("Failed to start REPL: %v", err)))

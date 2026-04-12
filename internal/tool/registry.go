@@ -98,7 +98,7 @@ func (r *Registry) ToolInfo() []ToolInfoEntry {
 }
 
 // Tools returns the tool definitions for all registered tools.
-// The returned slice is suitable for passing to ChatService.StreamChat.
+// The returned slice is suitable for passing to provider.StreamChat via ChatRequest.
 func (r *Registry) Tools() []model.ToolDefinition {
 	if len(r.tools) == 0 {
 		return nil

@@ -17,6 +17,7 @@ import (
 	"github.com/marad/fenec/internal/chat"
 	"github.com/marad/fenec/internal/config"
 	"github.com/marad/fenec/internal/model"
+	"github.com/marad/fenec/internal/provider"
 	"github.com/marad/fenec/internal/render"
 	"github.com/marad/fenec/internal/session"
 	"github.com/marad/fenec/internal/tool"
@@ -24,7 +25,7 @@ import (
 
 // REPL manages the interactive chat loop.
 type REPL struct {
-	client    chat.ChatService
+	provider  provider.Provider
 	conv      *chat.Conversation
 	rl        *readline.Instance
 	mu        sync.Mutex         // Protects streaming state
@@ -41,7 +42,7 @@ type REPL struct {
 }
 
 // NewREPL creates a REPL connected to the given chat service.
-func NewREPL(client chat.ChatService, model string, systemPrompt string, tracker *chat.ContextTracker, store *session.Store, registry *tool.Registry) (*REPL, error) {
+func NewREPL(p provider.Provider, model string, systemPrompt string, tracker *chat.ContextTracker, store *session.Store, registry *tool.Registry) (*REPL, error) {
 	historyFile, err := config.HistoryFile()
 	if err != nil {
 		// Non-fatal: proceed without history.
@@ -80,7 +81,7 @@ func NewREPL(client chat.ChatService, model string, systemPrompt string, tracker
 	sess := session.NewSession(model)
 
 	r := &REPL{
-		client:           client,
+		provider:         p,
 		conv:             conv,
 		rl:               rl,
 		sigCh:            make(chan os.Signal, 1),
@@ -337,8 +338,17 @@ func (r *REPL) sendMessage(input string) {
 		thinkingStarted := false
 		contentStarted := false
 
+		// Build provider request from conversation state.
+		req := &provider.ChatRequest{
+			Model:         r.conv.Model,
+			Messages:      r.conv.Messages,
+			Tools:         tools,
+			Think:         r.conv.Think,
+			ContextLength: r.conv.ContextLength,
+		}
+
 		// Stream the response.
-		msg, metrics, err := r.client.StreamChat(ctx, r.conv, tools, func(token string) {
+		msg, metrics, err := r.provider.StreamChat(ctx, req, func(token string) {
 			if !contentStarted {
 				contentStarted = true
 				sp.Stop()
@@ -436,7 +446,13 @@ func (r *REPL) sendMessage(input string) {
 	thinkingStarted2 := false
 	contentStarted2 := false
 
-	msg, _, err := r.client.StreamChat(ctx, r.conv, nil, func(token string) {
+	summaryReq := &provider.ChatRequest{
+		Model:         r.conv.Model,
+		Messages:      r.conv.Messages,
+		Think:         r.conv.Think,
+		ContextLength: r.conv.ContextLength,
+	}
+	msg, _, err := r.provider.StreamChat(ctx, summaryReq, func(token string) {
 		if !contentStarted2 {
 			contentStarted2 = true
 			sp2.Stop()
@@ -488,7 +504,7 @@ func (r *REPL) ApproveCommand(command string) bool {
 // handleModelCommand implements the /model interactive selection (per D-09, D-10).
 func (r *REPL) handleModelCommand() {
 	ctx := context.Background()
-	models, err := r.client.ListModels(ctx)
+	models, err := r.provider.ListModels(ctx)
 	if err != nil {
 		fmt.Fprintln(r.rl.Stdout(), render.FormatError(fmt.Sprintf("Failed to list models: %v", err)))
 		return
