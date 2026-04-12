@@ -44,7 +44,7 @@ See `.planning/milestones/v1.0-ROADMAP.md` for full phase details.
 **Plans:** 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- Create internal/model package with canonical types and JSON round-trip tests
+- [x] 07-01-PLAN.md -- Create internal/model package with canonical types and JSON round-trip tests
 - [ ] 07-02-PLAN.md -- Migrate all packages to canonical types with Ollama conversion layer
 
 ### Phase 8: Provider Abstraction
