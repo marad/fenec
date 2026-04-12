@@ -47,8 +47,9 @@ created: 2026-04-12
 
 ## Wave 0 Requirements
 
-- [ ] `internal/model/model_test.go` — tests for canonical Message, ToolDefinition, ToolCall types
-- [ ] `internal/model/convert_test.go` — tests for Ollama type conversion round-trips
+- [ ] `internal/model/message_test.go` — tests for canonical Message JSON round-trips
+- [ ] `internal/model/tool_test.go` — tests for ToolDefinition, ToolCall, PropertyType marshaling
+- [ ] `internal/model/metrics_test.go` — tests for StreamMetrics types
 
 *Existing test infrastructure covers framework and fixtures.*
 
