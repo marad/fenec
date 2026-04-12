@@ -1,6 +1,7 @@
 package repl
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -147,4 +148,25 @@ func TestAutoSaveCalledOnce(t *testing.T) {
 
 	// Use time and require to satisfy imports.
 	_ = time.Now()
+}
+
+func TestReadAllInput(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"single line", "hello world\n", "hello world"},
+		{"multi-line", "line one\nline two\nline three\n", "line one\nline two\nline three"},
+		{"empty", "", ""},
+		{"whitespace only", "  \n  \n  ", ""},
+		{"preserves internal spacing", "  hello\n  world  ", "hello\n  world"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := readAllInput(strings.NewReader(tt.input))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
