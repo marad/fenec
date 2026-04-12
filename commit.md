@@ -1,7 +1,1 @@
-Stage and commit all changes. Run these commands in order:
-
-1. `git add .`
-2. `git diff --staged` to read the actual changes
-3. `git commit -m "<type>: <description>"` where type is feat/fix/docs/refactor/test/chore
-
-Keep the message under 72 characters. Focus on why, not what.
+Run `git add .` then `git diff --staged`. Read the diff carefully. Based on what actually changed, run `git commit -m "<type>: <description>"` where type is feat/fix/docs/refactor/test/chore. The message must describe the specific changes you see in the diff, not a generic summary. Under 72 characters.
