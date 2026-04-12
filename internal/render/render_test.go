@@ -1,6 +1,7 @@
 package render
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -63,4 +64,54 @@ func TestFormatThinkingSkipsEmptyLines(t *testing.T) {
 	assert.Contains(t, result, "Line C")
 	assert.Contains(t, result, "Line D")
 	assert.Contains(t, result, "Line E")
+}
+
+func TestThinkingStreamerRollingWindow(t *testing.T) {
+	var buf bytes.Buffer
+	ts := NewThinkingStreamer(&buf, 3)
+
+	ts.Push("Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n")
+	ts.Finish()
+
+	output := buf.String()
+	// Should contain the label and last 3 lines.
+	assert.Contains(t, output, "[thinking]")
+	assert.Contains(t, output, "Line 3")
+	assert.Contains(t, output, "Line 4")
+	assert.Contains(t, output, "Line 5")
+}
+
+func TestThinkingStreamerPartialLines(t *testing.T) {
+	var buf bytes.Buffer
+	ts := NewThinkingStreamer(&buf, 3)
+
+	// Simulate chunked delivery across line boundaries.
+	ts.Push("Hel")
+	ts.Push("lo world\nSec")
+	ts.Push("ond line\n")
+	ts.Finish()
+
+	output := buf.String()
+	assert.Contains(t, output, "Hello world")
+	assert.Contains(t, output, "Second line")
+}
+
+func TestThinkingStreamerHasContentEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	ts := NewThinkingStreamer(&buf, 3)
+	assert.False(t, ts.HasContent())
+
+	ts.Push("something\n")
+	assert.True(t, ts.HasContent())
+}
+
+func TestThinkingStreamerFinishFlushePartial(t *testing.T) {
+	var buf bytes.Buffer
+	ts := NewThinkingStreamer(&buf, 3)
+
+	ts.Push("no newline at end")
+	ts.Finish()
+
+	output := buf.String()
+	assert.Contains(t, output, "no newline at end")
 }

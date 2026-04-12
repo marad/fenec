@@ -15,7 +15,11 @@ _Commit Message: feat: Add input validation to login form_
 
 1. Stage all the files within current git repository.
 2. Review each staged file and output a brief summary of the changes made to the file.
-3. Commit the changes - prepare a message according to Commit Guidelines.
+   Use `git status` to understand which files to summarize.
+   **Step output example**:
+   - fileA.txt - changed the meaning of a paragraph
+   - fileB.py - updated X function to do Y
+3. Use `git commit -m "$MESSAGE"` - make sure the message summarizes overall changes made
 
 # Confirmation
 

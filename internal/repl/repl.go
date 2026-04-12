@@ -330,18 +330,16 @@ func (r *REPL) sendMessage(input string) {
 	}
 
 	for round := 0; round < maxToolRounds; round++ {
-		// Start thinking spinner (per D-05).
+		// Stream thinking as a rolling window of last 3 lines, then content.
+		ts := render.NewThinkingStreamer(r.rl.Stdout(), 3)
 		sp := render.NewSpinner(r.rl.Stdout())
 		sp.Start()
 
 		var content strings.Builder
-		var thinkingBuf strings.Builder
+		thinkingStarted := false
 		notifier := chat.NewFirstTokenNotifier(func() {
 			sp.Stop()
-			// Show last 3 lines of thinking before response starts.
-			if summary := render.FormatThinking(thinkingBuf.String(), 3); summary != "" {
-				fmt.Fprintln(r.rl.Stdout(), summary)
-			}
+			ts.Finish()
 		})
 
 		// Stream the response.
@@ -350,10 +348,19 @@ func (r *REPL) sendMessage(input string) {
 			fmt.Fprint(r.rl.Stdout(), token)
 			content.WriteString(token)
 		}, func(chunk string) {
-			thinkingBuf.WriteString(chunk)
+			if !thinkingStarted {
+				sp.Stop()
+				thinkingStarted = true
+			}
+			ts.Push(chunk)
 		})
 
-		sp.Stop()
+		if !thinkingStarted {
+			sp.Stop()
+		}
+		if !ts.HasContent() {
+			ts.Clear()
+		}
 
 		if err != nil {
 			if ctx.Err() == context.Canceled {
@@ -426,15 +433,14 @@ func (r *REPL) sendMessage(input string) {
 	fmt.Fprintf(r.rl.Stdout(), "\n[max tool rounds (%d) reached, requesting summary]\n", maxToolRounds)
 	r.conv.AddUser("Please summarize what you've done so far. Do not make any more tool calls.")
 
-	sp := render.NewSpinner(r.rl.Stdout())
-	sp.Start()
+	ts2 := render.NewThinkingStreamer(r.rl.Stdout(), 3)
+	sp2 := render.NewSpinner(r.rl.Stdout())
+	sp2.Start()
 	var content strings.Builder
-	var thinkingBuf2 strings.Builder
+	thinkingStarted2 := false
 	notifier := chat.NewFirstTokenNotifier(func() {
-		sp.Stop()
-		if summary := render.FormatThinking(thinkingBuf2.String(), 3); summary != "" {
-			fmt.Fprintln(r.rl.Stdout(), summary)
-		}
+		sp2.Stop()
+		ts2.Finish()
 	})
 
 	msg, _, err := r.client.StreamChat(ctx, r.conv, nil, func(token string) {
@@ -442,9 +448,18 @@ func (r *REPL) sendMessage(input string) {
 		fmt.Fprint(r.rl.Stdout(), token)
 		content.WriteString(token)
 	}, func(chunk string) {
-		thinkingBuf2.WriteString(chunk)
+		if !thinkingStarted2 {
+			sp2.Stop()
+			thinkingStarted2 = true
+		}
+		ts2.Push(chunk)
 	})
-	sp.Stop()
+	if !thinkingStarted2 {
+		sp2.Stop()
+	}
+	if !ts2.HasContent() {
+		ts2.Clear()
+	}
 
 	if err != nil {
 		fmt.Fprintln(r.rl.Stdout(), render.FormatError(err.Error()))

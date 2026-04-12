@@ -2,8 +2,10 @@ package render
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
+	"sync"
 
 	"charm.land/lipgloss/v2"
 )
@@ -94,6 +96,131 @@ func FormatThinking(thinking string, maxLines int) string {
 	label := thinkingStyle.Render("[thinking]")
 	body := thinkingStyle.Render(strings.Join(lines, "\n"))
 	return label + "\n" + body
+}
+
+// ThinkingStreamer displays a rolling window of the last N thinking lines,
+// streaming them live as chunks arrive. Replaces the spinner during thinking.
+type ThinkingStreamer struct {
+	w           io.Writer
+	maxLines    int
+	lines       []string // rolling window of non-empty lines
+	partial     string   // incomplete line (no trailing newline yet)
+	drawnLines  int      // how many terminal lines we last drew (for erase)
+	labelDrawn  bool
+	mu          sync.Mutex
+	stopped     bool
+}
+
+// NewThinkingStreamer creates a streamer that shows the last maxLines of
+// thinking output, rewriting in place.
+func NewThinkingStreamer(w io.Writer, maxLines int) *ThinkingStreamer {
+	return &ThinkingStreamer{
+		w:        w,
+		maxLines: maxLines,
+	}
+}
+
+// Push appends a thinking chunk and redraws the display.
+func (ts *ThinkingStreamer) Push(chunk string) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	if ts.stopped {
+		return
+	}
+
+	// Combine partial line with new chunk.
+	text := ts.partial + chunk
+	parts := strings.Split(text, "\n")
+
+	// Last element is the new partial (may be empty if chunk ended with \n).
+	ts.partial = parts[len(parts)-1]
+
+	// All elements except the last are complete lines.
+	for _, line := range parts[:len(parts)-1] {
+		if strings.TrimSpace(line) != "" {
+			ts.lines = append(ts.lines, line)
+			if len(ts.lines) > ts.maxLines {
+				ts.lines = ts.lines[len(ts.lines)-ts.maxLines:]
+			}
+		}
+	}
+
+	ts.redraw()
+}
+
+// Finish freezes the display. After this, the thinking lines stay on screen
+// and content streams below them. Returns the number of terminal lines occupied.
+func (ts *ThinkingStreamer) Finish() {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	if ts.stopped {
+		return
+	}
+	ts.stopped = true
+
+	// Flush any remaining partial line.
+	if strings.TrimSpace(ts.partial) != "" {
+		ts.lines = append(ts.lines, ts.partial)
+		if len(ts.lines) > ts.maxLines {
+			ts.lines = ts.lines[len(ts.lines)-ts.maxLines:]
+		}
+		ts.partial = ""
+		ts.redraw()
+	}
+
+	// Move cursor below the drawn content so subsequent output doesn't overwrite.
+	if ts.drawnLines > 0 {
+		fmt.Fprint(ts.w, "\n")
+	}
+}
+
+// Clear erases the thinking display entirely (used if no thinking was produced).
+func (ts *ThinkingStreamer) Clear() {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.stopped = true
+	ts.erase()
+}
+
+// HasContent returns true if any thinking lines were received.
+func (ts *ThinkingStreamer) HasContent() bool {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	return len(ts.lines) > 0 || strings.TrimSpace(ts.partial) != ""
+}
+
+func (ts *ThinkingStreamer) erase() {
+	if ts.drawnLines > 0 {
+		// Move up and clear each line we drew.
+		for i := 0; i < ts.drawnLines; i++ {
+			fmt.Fprint(ts.w, "\033[A\033[K")
+		}
+		ts.drawnLines = 0
+	}
+	if ts.labelDrawn {
+		fmt.Fprint(ts.w, "\033[A\033[K")
+		ts.labelDrawn = false
+	}
+}
+
+func (ts *ThinkingStreamer) redraw() {
+	if len(ts.lines) == 0 {
+		return
+	}
+
+	// Erase previous content.
+	ts.erase()
+
+	// Draw label + lines.
+	label := thinkingStyle.Render("[thinking]")
+	fmt.Fprintln(ts.w, label)
+	ts.labelDrawn = true
+
+	ts.drawnLines = 0
+	for _, line := range ts.lines {
+		fmt.Fprintln(ts.w, thinkingStyle.Render(line))
+		ts.drawnLines++
+	}
 }
 
 // FormatToolEvent returns a styled banner for tool lifecycle events.

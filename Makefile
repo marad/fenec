@@ -3,5 +3,5 @@
 build:
 	go build -o fenec .
 
-install:
+install: build
 	go install .
