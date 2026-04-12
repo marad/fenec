@@ -174,9 +174,52 @@ func (r *REPL) Run() error {
 	}
 }
 
-// RunPipe reads lines from r and sends each to the model, printing responses
-// to stdout. Exits on EOF. Used for non-interactive testing (e.g., piped input).
-func (r *REPL) RunPipe(input io.Reader) error {
+// readAllInput reads the entire content of r as a single string, trimming
+// leading/trailing whitespace. Returns empty string if input is empty or
+// whitespace-only.
+func readAllInput(r io.Reader) (string, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// RunPipe reads from input and sends to the model, printing responses to stdout.
+// When lineByLine is false (default), all stdin is read at once and sent as a
+// single message. When lineByLine is true, each line is sent as a separate message.
+// Exits on EOF.
+func (r *REPL) RunPipe(input io.Reader, lineByLine bool) error {
+	if !lineByLine {
+		return r.runPipeBatch(input)
+	}
+	return r.runPipeLineByLine(input)
+}
+
+// runPipeBatch reads all of stdin at once and sends it as a single message.
+func (r *REPL) runPipeBatch(input io.Reader) error {
+	content, err := readAllInput(input)
+	if err != nil {
+		return fmt.Errorf("reading stdin: %w", err)
+	}
+	if content == "" {
+		return nil
+	}
+
+	// Show a truncated preview of what was received.
+	preview := content
+	if len(preview) > 100 {
+		preview = preview[:100] + "..."
+	}
+	fmt.Fprintf(r.rl.Stdout(), "> %s\n", preview)
+
+	r.sendMessage(content)
+	fmt.Fprintln(r.rl.Stdout())
+	return nil
+}
+
+// runPipeLineByLine reads stdin line-by-line, sending each as a separate message.
+func (r *REPL) runPipeLineByLine(input io.Reader) error {
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
