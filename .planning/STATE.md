@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Provider Support
-status: defining_requirements
-stopped_at: Milestone v1.1 started
+status: ready_to_plan
+stopped_at: Roadmap created for v1.1
 last_updated: "2026-04-12"
 last_activity: 2026-04-12
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,48 +20,37 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
-**Current focus:** Defining requirements for v1.1 Multi-Provider Support
+**Current focus:** Phase 7 - Canonical Types (v1.1 Multi-Provider Support)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-04-12 — Milestone v1.1 started
+Phase: 7 of 11 (Canonical Types) -- first phase of v1.1
+Plan: --
+Status: Ready to plan
+Last activity: 2026-04-12 -- Roadmap created for v1.1 Multi-Provider Support
+
+Progress: [░░░░░░░░░░] 0% (v1.1)
 
 ## Performance Metrics
 
-**Velocity:**
+**Velocity (from v1.0):**
 
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 14
+- Average duration: ~4 min
+- Total execution time: ~55 min
 
-**By Phase:**
+**By Phase (v1.1):**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | - | - | - | - |
 
-**Recent Trend:**
+**Recent Trend (v1.0):**
 
-- Last 5 plans: -
-- Trend: -
+- Last 5 plans: 6min, 2min, 3min, 5min, 3min
+- Trend: Stable
 
 *Updated after each plan completion*
-| Phase 01 P02 | 3min | 2 tasks | 6 files |
-| Phase 01-foundation P01 | 4min | 3 tasks | 10 files |
-| Phase 02 P02 | 3min | 2 tasks | 6 files |
-| Phase 02-01 P01 | 4min | 2 tasks | 7 files |
-| Phase 02-conversation P03 | 5min | 2 tasks | 5 files |
-| Phase 03-01 P01 | 3min | 2 tasks | 6 files |
-| Phase 03-02 P02 | 5min | 2 tasks | 8 files |
-| Phase 04-01 P01 | 9min | 1 tasks | 12 files |
-| Phase 04-02 P02 | 3min | 2 tasks | 7 files |
-| Phase 05-01 P01 | 6min | 2 tasks | 9 files |
-| Phase 05-02 P02 | 2min | 1 tasks | 5 files |
-| Phase 06 P01 | 3min | 3 tasks | 6 files |
-| Phase 06 P02 | 5min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -70,46 +59,12 @@ Last activity: 2026-04-12 — Milestone v1.1 started
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- gopher-lua (Lua 5.1) is the correct choice over actual LuaJIT -- pure Go, no cgo required
-- No LangChainGo -- direct Ollama API integration avoids framework overhead
-- Set num_ctx explicitly from first Ollama call to avoid silent context truncation
-- [Phase 01]: Used glamour WithStandardStyle dark explicitly -- WithAutoStyle removed in v2
-- [Phase 01]: Config uses os.UserConfigDir for cross-platform config directory resolution
-- [Phase 01-foundation]: Used internal chatAPI interface wrapping api.Client for unit testing without live Ollama
-- [Phase 01-foundation]: StreamChat returns partial content on cancellation for REPL display
-- [Phase 02]: Session ID uses timestamp format 2006-01-02T15-04-05 for human readability and filesystem safety
-- [Phase 02]: Store constructor takes dir path string for testability -- caller resolves via config.SessionDir
-- [Phase 02]: AutoSave skips sessions with <=1 message to avoid persisting system-prompt-only sessions
-- [Phase 02-01]: Conservative 4096 fallback when Show API fails or context_length key missing
-- [Phase 02-01]: Proportional token estimation in TruncateOldest rather than per-message counting
-- [Phase 02-01]: Pair-based removal (user+assistant) in truncation to maintain conversation coherence
-- [Phase 02-conversation]: Auto-save uses sync.Once to deduplicate between Run() defer and Close() exit paths
-- [Phase 02-conversation]: Startup auto-save check is informational only -- user must /load explicitly
-- [Phase 03]: Tool interface uses api.ToolCallFunctionArguments directly for type safety with Ollama API
-- [Phase 03]: Nil approver means deny-all for dangerous commands (secure by default)
-- [Phase 03]: ShellTool uses process group management (Setpgid) with WaitDelay for clean timeout kills
-- [Phase 03]: StreamChat captures full api.Message on Done chunk preserving ToolCalls, with fallback for no-Done-chunk compatibility
-- [Phase 03]: ApproveCommand exported on REPL, wired to ShellTool via closure in main.go to break initialization cycle
-- [Phase 03]: Max 10 tool rounds prevents infinite loops; forced summary request when limit reached
-- [Phase 04-01]: Package named lua with glua import alias for gopher-lua -- reads naturally from consumer side
-- [Phase 04-01]: Fresh sandboxed LState per execution instead of shared state -- prevents cross-tool pollution
-- [Phase 04-01]: Pre-compiled FunctionProto stored on LuaTool -- avoids re-parsing on every execution
-- [Phase 04-02]: ToolsDir does NOT create directory -- deferred to Phase 5 when agent writes first tool
-- [Phase 04-02]: LoadTools returns partial success: valid tools load even with broken scripts present
-- [Phase 04-02]: Lua loading is non-fatal in main.go: missing dir, scan errors, and load errors all allow app to start
-- [Phase 05]: Validation errors returned as JSON tool result strings, not Go errors, so model can self-correct
-- [Phase 05]: Temp-file compilation before disk write prevents partial/corrupt tool files
-- [Phase 05]: Re-compile from final path after write so LuaTool.scriptPath is correct for execution
-- [Phase 05]: Removed compile-time tool.Tool interface check from lua tests to break import cycle (tool now imports lua)
-- [Phase 05]: Self-extension tools registered as built-in so they appear as [built-in] and cannot be self-deleted
-- [Phase 05]: Disk-loaded Lua tools use RegisterLua (not Register) for correct provenance tagging
-- [Phase 05]: Closure-deferred replRef wiring pattern reused from approver for notifier callback
-- [Phase 06]: Safe prefix matching with separator prevents /etcetera matching /etc deny prefix
-- [Phase 06]: Fail-closed on path resolution errors -- deny access when symlinks or paths cannot be resolved
-- [Phase 06]: Truncated flag reflects whether more lines exist beyond returned lines, regardless of explicit/default limit
-- [Phase 06]: WriteFileTool and EditFileTool share identical approval gating pattern with ShellTool
-- [Phase 06]: pathcheck resolveWithAncestor walks up to first existing ancestor for deep mkdir -p paths
-- [Phase quick]: Extract readAllInput as package-level helper for testability
+- 228 Ollama type references across 29 files must be migrated to canonical types before provider abstraction
+- Provider interface + Ollama adapter validates abstraction before adding OpenAI adapter
+- OpenAI-compat streaming + tools is broken -- need non-streaming fallback when tools present
+- Config uses BurntSushi/toml; zero-config default preserves existing behavior
+- `--model provider/model` with `/` as delimiter (not `:`)
+- `/model` REPL command groups models by provider
 
 ### Pending Todos
 
@@ -125,17 +80,13 @@ None yet.
 | 260412-gan | Switch CLI flags to pflag with double-dash conventions, custom help, --version | 2026-04-12 | 0f40cc8 | [260412-gan](./quick/260412-gan-improve-cli-help-output-and-flag-handlin/) |
 | 260412-lmh | Add --model / -m flag for selecting Ollama model | 2026-04-12 | c8c2c21 | [260412-lmh](./quick/260412-lmh-add-the-ability-to-configure-model-throu/) |
 
-### Roadmap Evolution
-
-- Phase 6 added: File Tools — built-in edit, read, and write tools for file manipulation
-
 ### Blockers/Concerns
 
-- Gemma 4 tool calling reliability has active compatibility issues with Ollama v0.20.0 -- verify at implementation time
-- gopher-lua LState is not goroutine-safe -- requires pool pattern (relevant in Phase 4)
+- OpenAI-compatible streaming with tool calls is broken -- Phase 10 must implement non-streaming fallback
+- Gemma 4 tool calling reliability has active compatibility issues with Ollama v0.20.0
 
 ## Session Continuity
 
 Last activity: 2026-04-12
-Stopped at: Completed quick task 260412-lmh (add --model / -m flag for model selection)
+Stopped at: Roadmap created for v1.1 Multi-Provider Support (5 phases, 15 requirements mapped)
 Resume file: None

@@ -61,27 +61,27 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROV-01 | — | Pending |
-| PROV-02 | — | Pending |
-| PROV-03 | — | Pending |
-| OAIC-01 | — | Pending |
-| OAIC-02 | — | Pending |
-| OAIC-03 | — | Pending |
-| OAIC-04 | — | Pending |
-| CONF-01 | — | Pending |
-| CONF-02 | — | Pending |
-| CONF-03 | — | Pending |
-| CONF-04 | — | Pending |
-| ROUT-01 | — | Pending |
-| ROUT-02 | — | Pending |
-| ROUT-03 | — | Pending |
-| ROUT-04 | — | Pending |
+| PROV-01 | Phase 8 | Pending |
+| PROV-02 | Phase 8 | Pending |
+| PROV-03 | Phase 7 | Pending |
+| OAIC-01 | Phase 10 | Pending |
+| OAIC-02 | Phase 10 | Pending |
+| OAIC-03 | Phase 10 | Pending |
+| OAIC-04 | Phase 10 | Pending |
+| CONF-01 | Phase 9 | Pending |
+| CONF-02 | Phase 9 | Pending |
+| CONF-03 | Phase 9 | Pending |
+| CONF-04 | Phase 9 | Pending |
+| ROUT-01 | Phase 11 | Pending |
+| ROUT-02 | Phase 11 | Pending |
+| ROUT-03 | Phase 11 | Pending |
+| ROUT-04 | Phase 11 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 14 total
-- Mapped to phases: 0
-- Unmapped: 14
+- v1.1 requirements: 15 total
+- Mapped to phases: 15
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-12*
-*Last updated: 2026-04-12 after initial definition*
+*Last updated: 2026-04-12 after roadmap creation*
