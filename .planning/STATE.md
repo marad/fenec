@@ -120,6 +120,7 @@ None yet.
 | 260411-tbx | Style tool call output gray and show results only in debug mode | 2026-04-11 | 21dad26 | [260411-tbx](./quick/260411-tbx-style-tool-call-output-gray-and-show-res/) |
 | 260412-etg | Change pipe mode to read all stdin by default, add --line-by-line flag | 2026-04-12 | fc6fc68 | [260412-etg](./quick/260412-etg-change-pipe-mode-read-all-stdin-by-defau/) |
 | 260412-f3x | Display last 3 lines of model thinking output in muted style | 2026-04-12 | 1408a78 | [260412-f3x](./quick/260412-f3x-display-last-3-lines-of-model-thinking-o/) |
+| 260412-gan | Switch CLI flags to pflag with double-dash conventions, custom help, --version | 2026-04-12 | 0f40cc8 | [260412-gan](./quick/260412-gan-improve-cli-help-output-and-flag-handlin/) |
 
 ### Roadmap Evolution
 
@@ -133,5 +134,5 @@ None yet.
 ## Session Continuity
 
 Last activity: 2026-04-12
-Stopped at: Completed quick task 260412-f3x (display last 3 lines of model thinking)
+Stopped at: Completed quick task 260412-gan (pflag migration and CLI help improvements)
 Resume file: None
