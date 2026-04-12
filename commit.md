@@ -24,3 +24,8 @@ _Commit Message: feat: Add input validation to login form_
 # Confirmation
 
 Output only a short confirmation when the commit is done and the repository is clean.
+
+# Hints
+
+- First think thoroughly on what you have to do and create a plan.
+- Follow the plan you created.

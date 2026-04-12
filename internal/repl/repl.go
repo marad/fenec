@@ -330,37 +330,34 @@ func (r *REPL) sendMessage(input string) {
 	}
 
 	for round := 0; round < maxToolRounds; round++ {
-		// Stream thinking as a rolling window of last 3 lines, then content.
-		ts := render.NewThinkingStreamer(r.rl.Stdout(), 3)
 		sp := render.NewSpinner(r.rl.Stdout())
 		sp.Start()
 
 		var content strings.Builder
 		thinkingStarted := false
-		notifier := chat.NewFirstTokenNotifier(func() {
-			sp.Stop()
-			ts.Finish()
-		})
+		contentStarted := false
 
 		// Stream the response.
 		msg, metrics, err := r.client.StreamChat(ctx, r.conv, tools, func(token string) {
-			notifier.Notify()
+			if !contentStarted {
+				contentStarted = true
+				sp.Stop()
+				if thinkingStarted {
+					fmt.Fprint(r.rl.Stdout(), "\n")
+				}
+			}
 			fmt.Fprint(r.rl.Stdout(), token)
 			content.WriteString(token)
 		}, func(chunk string) {
 			if !thinkingStarted {
 				sp.Stop()
+				fmt.Fprintln(r.rl.Stdout(), render.FormatThinkingLabel())
 				thinkingStarted = true
 			}
-			ts.Push(chunk)
+			fmt.Fprint(r.rl.Stdout(), render.FormatThinkingChunk(chunk))
 		})
 
-		if !thinkingStarted {
-			sp.Stop()
-		}
-		if !ts.HasContent() {
-			ts.Clear()
-		}
+		sp.Stop()
 
 		if err != nil {
 			if ctx.Err() == context.Canceled {
@@ -433,33 +430,31 @@ func (r *REPL) sendMessage(input string) {
 	fmt.Fprintf(r.rl.Stdout(), "\n[max tool rounds (%d) reached, requesting summary]\n", maxToolRounds)
 	r.conv.AddUser("Please summarize what you've done so far. Do not make any more tool calls.")
 
-	ts2 := render.NewThinkingStreamer(r.rl.Stdout(), 3)
 	sp2 := render.NewSpinner(r.rl.Stdout())
 	sp2.Start()
 	var content strings.Builder
 	thinkingStarted2 := false
-	notifier := chat.NewFirstTokenNotifier(func() {
-		sp2.Stop()
-		ts2.Finish()
-	})
+	contentStarted2 := false
 
 	msg, _, err := r.client.StreamChat(ctx, r.conv, nil, func(token string) {
-		notifier.Notify()
+		if !contentStarted2 {
+			contentStarted2 = true
+			sp2.Stop()
+			if thinkingStarted2 {
+				fmt.Fprint(r.rl.Stdout(), "\n")
+			}
+		}
 		fmt.Fprint(r.rl.Stdout(), token)
 		content.WriteString(token)
 	}, func(chunk string) {
 		if !thinkingStarted2 {
 			sp2.Stop()
+			fmt.Fprintln(r.rl.Stdout(), render.FormatThinkingLabel())
 			thinkingStarted2 = true
 		}
-		ts2.Push(chunk)
+		fmt.Fprint(r.rl.Stdout(), render.FormatThinkingChunk(chunk))
 	})
-	if !thinkingStarted2 {
-		sp2.Stop()
-	}
-	if !ts2.HasContent() {
-		ts2.Clear()
-	}
+	sp2.Stop()
 
 	if err != nil {
 		fmt.Fprintln(r.rl.Stdout(), render.FormatError(err.Error()))
