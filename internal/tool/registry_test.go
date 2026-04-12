@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,18 +20,18 @@ type dummyTool struct {
 
 func (d *dummyTool) Name() string { return d.name }
 
-func (d *dummyTool) Definition() api.Tool {
-	return api.Tool{
+func (d *dummyTool) Definition() model.ToolDefinition {
+	return model.ToolDefinition{
 		Type: "function",
-		Function: api.ToolFunction{
+		Function: model.ToolFunction{
 			Name:        d.name,
 			Description: d.desc,
-			Parameters:  api.ToolFunctionParameters{Type: "object"},
+			Parameters:  model.ToolFunctionParameters{Type: "object"},
 		},
 	}
 }
 
-func (d *dummyTool) Execute(_ context.Context, _ api.ToolCallFunctionArguments) (string, error) {
+func (d *dummyTool) Execute(_ context.Context, _ map[string]any) (string, error) {
 	return d.result, d.err
 }
 
@@ -55,11 +55,10 @@ func TestRegistryDispatchSuccess(t *testing.T) {
 	reg := NewRegistry()
 	reg.Register(&dummyTool{name: "echo", desc: "Echo tool", result: "ok"})
 
-	args := api.NewToolCallFunctionArguments()
-	call := api.ToolCall{
-		Function: api.ToolCallFunction{
+	call := model.ToolCall{
+		Function: model.ToolCallFunction{
 			Name:      "echo",
-			Arguments: args,
+			Arguments: map[string]any{},
 		},
 	}
 
@@ -71,11 +70,10 @@ func TestRegistryDispatchSuccess(t *testing.T) {
 func TestRegistryDispatchUnknownTool(t *testing.T) {
 	reg := NewRegistry()
 
-	args := api.NewToolCallFunctionArguments()
-	call := api.ToolCall{
-		Function: api.ToolCallFunction{
+	call := model.ToolCall{
+		Function: model.ToolCallFunction{
 			Name:      "nonexistent",
-			Arguments: args,
+			Arguments: map[string]any{},
 		},
 	}
 
@@ -88,11 +86,10 @@ func TestRegistryDispatchError(t *testing.T) {
 	reg := NewRegistry()
 	reg.Register(&dummyTool{name: "fail", desc: "Failing tool", err: fmt.Errorf("tool error")})
 
-	args := api.NewToolCallFunctionArguments()
-	call := api.ToolCall{
-		Function: api.ToolCallFunction{
+	call := model.ToolCall{
+		Function: model.ToolCallFunction{
 			Name:      "fail",
-			Arguments: args,
+			Arguments: map[string]any{},
 		},
 	}
 
@@ -132,8 +129,7 @@ func TestRegistryUnregister(t *testing.T) {
 		assert.Empty(t, tools)
 
 		// Should no longer dispatch
-		args := api.NewToolCallFunctionArguments()
-		call := api.ToolCall{Function: api.ToolCallFunction{Name: "tool_a", Arguments: args}}
+		call := model.ToolCall{Function: model.ToolCallFunction{Name: "tool_a", Arguments: map[string]any{}}}
 		_, err := reg.Dispatch(context.Background(), call)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unknown tool")

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 )
 
 // WriteFileTool creates or overwrites files with content.
@@ -28,35 +28,34 @@ func (w *WriteFileTool) Name() string {
 	return "write_file"
 }
 
-// Definition returns the Ollama API tool definition for ChatRequest.Tools.
-func (w *WriteFileTool) Definition() api.Tool {
-	props := api.NewToolPropertiesMap()
-	props.Set("path", api.ToolProperty{
-		Type:        api.PropertyType{"string"},
-		Description: "Path to the file to write. Creates parent directories if needed.",
-	})
-	props.Set("content", api.ToolProperty{
-		Type:        api.PropertyType{"string"},
-		Description: "The content to write to the file. Overwrites existing content.",
-	})
-
-	return api.Tool{
+// Definition returns the tool definition for ChatRequest.Tools.
+func (w *WriteFileTool) Definition() model.ToolDefinition {
+	return model.ToolDefinition{
 		Type: "function",
-		Function: api.ToolFunction{
+		Function: model.ToolFunction{
 			Name:        "write_file",
 			Description: "Write content to a file, creating it if it does not exist or overwriting if it does. Creates parent directories automatically.",
-			Parameters: api.ToolFunctionParameters{
-				Type:       "object",
-				Required:   []string{"path", "content"},
-				Properties: props,
+			Parameters: model.ToolFunctionParameters{
+				Type:     "object",
+				Required: []string{"path", "content"},
+				Properties: map[string]model.ToolProperty{
+					"path": {
+						Type:        model.PropertyType{"string"},
+						Description: "Path to the file to write. Creates parent directories if needed.",
+					},
+					"content": {
+						Type:        model.PropertyType{"string"},
+						Description: "The content to write to the file. Overwrites existing content.",
+					},
+				},
 			},
 		},
 	}
 }
 
 // Execute writes content to the file specified by the path argument.
-func (w *WriteFileTool) Execute(_ context.Context, args api.ToolCallFunctionArguments) (string, error) {
-	pathVal, ok := args.Get("path")
+func (w *WriteFileTool) Execute(_ context.Context, args map[string]any) (string, error) {
+	pathVal, ok := args["path"]
 	if !ok {
 		return "", fmt.Errorf("missing required argument: path")
 	}
@@ -65,7 +64,7 @@ func (w *WriteFileTool) Execute(_ context.Context, args api.ToolCallFunctionArgu
 		return "", fmt.Errorf("missing required argument: path")
 	}
 
-	contentVal, ok := args.Get("content")
+	contentVal, ok := args["content"]
 	if !ok {
 		return "", fmt.Errorf("missing required argument: content")
 	}

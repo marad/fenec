@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 )
 
 // EditResult holds the structured output of a file edit operation.
@@ -36,39 +36,38 @@ func (e *EditFileTool) Name() string {
 	return "edit_file"
 }
 
-// Definition returns the Ollama API tool definition for ChatRequest.Tools.
-func (e *EditFileTool) Definition() api.Tool {
-	props := api.NewToolPropertiesMap()
-	props.Set("path", api.ToolProperty{
-		Type:        api.PropertyType{"string"},
-		Description: "Path to the file to edit. File must exist.",
-	})
-	props.Set("old_text", api.ToolProperty{
-		Type:        api.PropertyType{"string"},
-		Description: "Exact text to find in the file. First occurrence will be replaced.",
-	})
-	props.Set("new_text", api.ToolProperty{
-		Type:        api.PropertyType{"string"},
-		Description: "Text to replace old_text with.",
-	})
-
-	return api.Tool{
+// Definition returns the tool definition for ChatRequest.Tools.
+func (e *EditFileTool) Definition() model.ToolDefinition {
+	return model.ToolDefinition{
 		Type: "function",
-		Function: api.ToolFunction{
+		Function: model.ToolFunction{
 			Name:        "edit_file",
 			Description: "Edit a file by replacing the first occurrence of old_text with new_text. Returns the number of lines changed and surrounding context.",
-			Parameters: api.ToolFunctionParameters{
-				Type:       "object",
-				Required:   []string{"path", "old_text", "new_text"},
-				Properties: props,
+			Parameters: model.ToolFunctionParameters{
+				Type:     "object",
+				Required: []string{"path", "old_text", "new_text"},
+				Properties: map[string]model.ToolProperty{
+					"path": {
+						Type:        model.PropertyType{"string"},
+						Description: "Path to the file to edit. File must exist.",
+					},
+					"old_text": {
+						Type:        model.PropertyType{"string"},
+						Description: "Exact text to find in the file. First occurrence will be replaced.",
+					},
+					"new_text": {
+						Type:        model.PropertyType{"string"},
+						Description: "Text to replace old_text with.",
+					},
+				},
 			},
 		},
 	}
 }
 
 // Execute performs the search-and-replace on the file specified by the path argument.
-func (e *EditFileTool) Execute(_ context.Context, args api.ToolCallFunctionArguments) (string, error) {
-	pathVal, ok := args.Get("path")
+func (e *EditFileTool) Execute(_ context.Context, args map[string]any) (string, error) {
+	pathVal, ok := args["path"]
 	if !ok {
 		return "", fmt.Errorf("missing required argument: path")
 	}
@@ -77,7 +76,7 @@ func (e *EditFileTool) Execute(_ context.Context, args api.ToolCallFunctionArgum
 		return "", fmt.Errorf("missing required argument: path")
 	}
 
-	oldTextVal, ok := args.Get("old_text")
+	oldTextVal, ok := args["old_text"]
 	if !ok {
 		return "", fmt.Errorf("missing required argument: old_text")
 	}
@@ -86,7 +85,7 @@ func (e *EditFileTool) Execute(_ context.Context, args api.ToolCallFunctionArgum
 		return "", fmt.Errorf("missing required argument: old_text")
 	}
 
-	newTextVal, ok := args.Get("new_text")
+	newTextVal, ok := args["new_text"]
 	if !ok {
 		return "", fmt.Errorf("missing required argument: new_text")
 	}

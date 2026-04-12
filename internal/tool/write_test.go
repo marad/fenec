@@ -6,16 +6,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func writeArgs(path, content string) api.ToolCallFunctionArguments {
-	args := api.NewToolCallFunctionArguments()
-	args.Set("path", path)
-	args.Set("content", content)
-	return args
+func writeArgs(path, content string) map[string]any {
+	return map[string]any{"path": path, "content": content}
 }
 
 func TestWriteFileNewFile(t *testing.T) {
@@ -127,15 +123,13 @@ func TestWriteFileMissingArgs(t *testing.T) {
 	wt := NewWriteFileTool(nil)
 
 	// Missing path
-	args := api.NewToolCallFunctionArguments()
-	args.Set("content", "data")
+	args := map[string]any{"content": "data"}
 	_, err := wt.Execute(context.Background(), args)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required argument: path")
 
 	// Missing content
-	args2 := api.NewToolCallFunctionArguments()
-	args2.Set("path", "test.txt")
+	args2 := map[string]any{"path": "test.txt"}
 	_, err = wt.Execute(context.Background(), args2)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required argument: content")

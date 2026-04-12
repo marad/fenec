@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 )
 
 const defaultReadLimit = 1000
@@ -35,39 +35,38 @@ func (r *ReadFileTool) Name() string {
 	return "read_file"
 }
 
-// Definition returns the Ollama API tool definition for ChatRequest.Tools.
-func (r *ReadFileTool) Definition() api.Tool {
-	props := api.NewToolPropertiesMap()
-	props.Set("path", api.ToolProperty{
-		Type:        api.PropertyType{"string"},
-		Description: "Absolute or relative path to the file to read",
-	})
-	props.Set("offset", api.ToolProperty{
-		Type:        api.PropertyType{"integer"},
-		Description: "Start reading from this line number (0-based). Optional.",
-	})
-	props.Set("limit", api.ToolProperty{
-		Type:        api.PropertyType{"integer"},
-		Description: "Maximum number of lines to read. Optional, defaults to 1000.",
-	})
-
-	return api.Tool{
+// Definition returns the tool definition for ChatRequest.Tools.
+func (r *ReadFileTool) Definition() model.ToolDefinition {
+	return model.ToolDefinition{
 		Type: "function",
-		Function: api.ToolFunction{
+		Function: model.ToolFunction{
 			Name:        "read_file",
 			Description: "Read the contents of a file and return it with line count metadata. Supports offset and limit for partial reads.",
-			Parameters: api.ToolFunctionParameters{
-				Type:       "object",
-				Required:   []string{"path"},
-				Properties: props,
+			Parameters: model.ToolFunctionParameters{
+				Type:     "object",
+				Required: []string{"path"},
+				Properties: map[string]model.ToolProperty{
+					"path": {
+						Type:        model.PropertyType{"string"},
+						Description: "Absolute or relative path to the file to read",
+					},
+					"offset": {
+						Type:        model.PropertyType{"integer"},
+						Description: "Start reading from this line number (0-based). Optional.",
+					},
+					"limit": {
+						Type:        model.PropertyType{"integer"},
+						Description: "Maximum number of lines to read. Optional, defaults to 1000.",
+					},
+				},
 			},
 		},
 	}
 }
 
 // Execute reads the file specified by the path argument.
-func (r *ReadFileTool) Execute(_ context.Context, args api.ToolCallFunctionArguments) (string, error) {
-	pathVal, ok := args.Get("path")
+func (r *ReadFileTool) Execute(_ context.Context, args map[string]any) (string, error) {
+	pathVal, ok := args["path"]
 	if !ok {
 		return "", fmt.Errorf("missing required argument: path")
 	}
@@ -167,8 +166,8 @@ func isBinaryFile(path string) (bool, error) {
 
 // getOptionalInt extracts an optional integer argument from tool call args.
 // JSON numbers arrive as float64 in Go; this handles the type assertion.
-func getOptionalInt(args api.ToolCallFunctionArguments, key string, defaultVal int) (int, error) {
-	val, ok := args.Get(key)
+func getOptionalInt(args map[string]any, key string, defaultVal int) (int, error) {
+	val, ok := args[key]
 	if !ok {
 		return defaultVal, nil
 	}

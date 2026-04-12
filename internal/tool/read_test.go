@@ -9,17 +9,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func makeFileArgs(path string, extras ...interface{}) api.ToolCallFunctionArguments {
-	args := api.NewToolCallFunctionArguments()
-	args.Set("path", path)
+func makeFileArgs(path string, extras ...interface{}) map[string]any {
+	args := map[string]any{"path": path}
 	for i := 0; i+1 < len(extras); i += 2 {
 		key := extras[i].(string)
-		args.Set(key, extras[i+1])
+		args[key] = extras[i+1]
 	}
 	return args
 }
@@ -121,7 +119,7 @@ func TestReadFileNonExistent(t *testing.T) {
 
 func TestReadFileMissingPath(t *testing.T) {
 	rt := NewReadFileTool()
-	args := api.NewToolCallFunctionArguments()
+	args := map[string]any{}
 	_, err := rt.Execute(context.Background(), args)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required argument")

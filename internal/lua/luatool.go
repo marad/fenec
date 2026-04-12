@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 	glua "github.com/yuin/gopher-lua"
 	"github.com/yuin/gopher-lua/parse"
 )
@@ -126,25 +126,25 @@ func (lt *LuaTool) Name() string {
 	return lt.name
 }
 
-// Definition returns the Ollama API tool definition for ChatRequest.Tools.
-func (lt *LuaTool) Definition() api.Tool {
-	props := api.NewToolPropertiesMap()
+// Definition returns the tool definition for ChatRequest.Tools.
+func (lt *LuaTool) Definition() model.ToolDefinition {
+	props := make(map[string]model.ToolProperty)
 	var required []string
 	for _, p := range lt.params {
-		props.Set(p.Name, api.ToolProperty{
-			Type:        api.PropertyType{p.Type},
+		props[p.Name] = model.ToolProperty{
+			Type:        model.PropertyType{p.Type},
 			Description: p.Description,
-		})
+		}
 		if p.Required {
 			required = append(required, p.Name)
 		}
 	}
-	return api.Tool{
+	return model.ToolDefinition{
 		Type: "function",
-		Function: api.ToolFunction{
+		Function: model.ToolFunction{
 			Name:        lt.name,
 			Description: lt.description,
-			Parameters: api.ToolFunctionParameters{
+			Parameters: model.ToolFunctionParameters{
 				Type:       "object",
 				Required:   required,
 				Properties: props,
@@ -155,7 +155,7 @@ func (lt *LuaTool) Definition() api.Tool {
 
 // Execute runs the Lua tool's execute function with the given arguments.
 // A fresh sandboxed LState is created per invocation to prevent cross-call state pollution.
-func (lt *LuaTool) Execute(ctx context.Context, args api.ToolCallFunctionArguments) (string, error) {
+func (lt *LuaTool) Execute(ctx context.Context, args map[string]any) (string, error) {
 	L := NewSandboxedState(ctx)
 	defer L.Close()
 

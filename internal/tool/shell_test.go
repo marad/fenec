@@ -7,15 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func makeArgs(command string) api.ToolCallFunctionArguments {
-	args := api.NewToolCallFunctionArguments()
-	args.Set("command", command)
-	return args
+func makeArgs(command string) map[string]any {
+	return map[string]any{"command": command}
 }
 
 func TestShellExecEcho(t *testing.T) {
@@ -134,7 +131,7 @@ func TestShellResultTruncation(t *testing.T) {
 
 func TestShellExecMissingCommand(t *testing.T) {
 	st := NewShellTool(10*time.Second, nil)
-	args := api.NewToolCallFunctionArguments()
+	args := map[string]any{}
 	_, err := st.Execute(context.Background(), args)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required argument: command")

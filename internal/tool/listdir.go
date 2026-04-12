@@ -7,7 +7,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 )
 
 // DirEntry describes a single entry in a directory listing.
@@ -30,31 +30,30 @@ func (l *ListDirTool) Name() string {
 	return "list_directory"
 }
 
-// Definition returns the Ollama API tool definition for ChatRequest.Tools.
-func (l *ListDirTool) Definition() api.Tool {
-	props := api.NewToolPropertiesMap()
-	props.Set("path", api.ToolProperty{
-		Type:        api.PropertyType{"string"},
-		Description: "Path to the directory to list",
-	})
-
-	return api.Tool{
+// Definition returns the tool definition for ChatRequest.Tools.
+func (l *ListDirTool) Definition() model.ToolDefinition {
+	return model.ToolDefinition{
 		Type: "function",
-		Function: api.ToolFunction{
+		Function: model.ToolFunction{
 			Name:        "list_directory",
 			Description: "List the contents of a directory, returning entries sorted with directories first then files, each with name, type, and size.",
-			Parameters: api.ToolFunctionParameters{
-				Type:       "object",
-				Required:   []string{"path"},
-				Properties: props,
+			Parameters: model.ToolFunctionParameters{
+				Type:     "object",
+				Required: []string{"path"},
+				Properties: map[string]model.ToolProperty{
+					"path": {
+						Type:        model.PropertyType{"string"},
+						Description: "Path to the directory to list",
+					},
+				},
 			},
 		},
 	}
 }
 
 // Execute lists the directory specified by the path argument.
-func (l *ListDirTool) Execute(_ context.Context, args api.ToolCallFunctionArguments) (string, error) {
-	pathVal, ok := args.Get("path")
+func (l *ListDirTool) Execute(_ context.Context, args map[string]any) (string, error) {
+	pathVal, ok := args["path"]
 	if !ok {
 		return "", fmt.Errorf("missing required argument: path")
 	}

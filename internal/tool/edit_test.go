@@ -7,17 +7,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func editArgs(path, oldText, newText string) api.ToolCallFunctionArguments {
-	args := api.NewToolCallFunctionArguments()
-	args.Set("path", path)
-	args.Set("old_text", oldText)
-	args.Set("new_text", newText)
-	return args
+func editArgs(path, oldText, newText string) map[string]any {
+	return map[string]any{"path": path, "old_text": oldText, "new_text": newText}
 }
 
 func TestEditFileReplace(t *testing.T) {
@@ -154,25 +149,19 @@ func TestEditFileMissingArgs(t *testing.T) {
 	et := NewEditFileTool(nil)
 
 	// Missing path
-	args := api.NewToolCallFunctionArguments()
-	args.Set("old_text", "old")
-	args.Set("new_text", "new")
+	args := map[string]any{"old_text": "old", "new_text": "new"}
 	_, err := et.Execute(context.Background(), args)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required argument: path")
 
 	// Missing old_text
-	args2 := api.NewToolCallFunctionArguments()
-	args2.Set("path", "test.txt")
-	args2.Set("new_text", "new")
+	args2 := map[string]any{"path": "test.txt", "new_text": "new"}
 	_, err = et.Execute(context.Background(), args2)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required argument: old_text")
 
 	// Missing new_text
-	args3 := api.NewToolCallFunctionArguments()
-	args3.Set("path", "test.txt")
-	args3.Set("old_text", "old")
+	args3 := map[string]any{"path": "test.txt", "old_text": "old"}
 	_, err = et.Execute(context.Background(), args3)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required argument: new_text")

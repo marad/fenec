@@ -3,15 +3,14 @@ package lua
 import (
 	"encoding/json"
 
-	"github.com/ollama/ollama/api"
 	glua "github.com/yuin/gopher-lua"
 )
 
-// ArgsToLuaTable converts Ollama tool call arguments to a Lua table.
+// ArgsToLuaTable converts tool call arguments to a Lua table.
 // Supported Go types: string, float64, bool, nil. Complex types are JSON-encoded as strings.
-func ArgsToLuaTable(L *glua.LState, args api.ToolCallFunctionArguments) *glua.LTable {
+func ArgsToLuaTable(L *glua.LState, args map[string]any) *glua.LTable {
 	tbl := L.NewTable()
-	for key, val := range args.All() {
+	for key, val := range args {
 		switch v := val.(type) {
 		case string:
 			L.SetField(tbl, key, glua.LString(v))

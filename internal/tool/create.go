@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 
 	feneclua "github.com/marad/fenec/internal/lua"
 )
@@ -35,23 +35,22 @@ func (c *CreateLuaTool) Name() string {
 	return "create_lua_tool"
 }
 
-// Definition returns the Ollama API tool definition for ChatRequest.Tools.
-func (c *CreateLuaTool) Definition() api.Tool {
-	props := api.NewToolPropertiesMap()
-	props.Set("code", api.ToolProperty{
-		Type:        api.PropertyType{"string"},
-		Description: "Complete Lua tool source code. Must return a table with name, description, and execute fields.",
-	})
-
-	return api.Tool{
+// Definition returns the tool definition for ChatRequest.Tools.
+func (c *CreateLuaTool) Definition() model.ToolDefinition {
+	return model.ToolDefinition{
 		Type: "function",
-		Function: api.ToolFunction{
+		Function: model.ToolFunction{
 			Name:        "create_lua_tool",
 			Description: "Create a new Lua tool by providing its source code. The tool is validated, saved to disk, and registered for immediate use.",
-			Parameters: api.ToolFunctionParameters{
-				Type:       "object",
-				Required:   []string{"code"},
-				Properties: props,
+			Parameters: model.ToolFunctionParameters{
+				Type:     "object",
+				Required: []string{"code"},
+				Properties: map[string]model.ToolProperty{
+					"code": {
+						Type:        model.PropertyType{"string"},
+						Description: "Complete Lua tool source code. Must return a table with name, description, and execute fields.",
+					},
+				},
 			},
 		},
 	}
@@ -60,8 +59,8 @@ func (c *CreateLuaTool) Definition() api.Tool {
 // Execute validates and persists a new Lua tool from the provided source code.
 // Validation errors are returned as tool result strings (not Go errors) so the
 // model can see and self-correct.
-func (c *CreateLuaTool) Execute(_ context.Context, args api.ToolCallFunctionArguments) (string, error) {
-	codeVal, ok := args.Get("code")
+func (c *CreateLuaTool) Execute(_ context.Context, args map[string]any) (string, error) {
+	codeVal, ok := args["code"]
 	if !ok {
 		return "", fmt.Errorf("missing required argument: code")
 	}
@@ -151,10 +150,8 @@ func errorJSON(format string, args ...interface{}) string {
 func successJSON(status string, lt Tool) string {
 	def := lt.Definition()
 	var paramNames []string
-	if props := def.Function.Parameters.Properties; props != nil {
-		for name := range props.All() {
-			paramNames = append(paramNames, name)
-		}
+	for name := range def.Function.Parameters.Properties {
+		paramNames = append(paramNames, name)
 	}
 
 	resp := map[string]interface{}{

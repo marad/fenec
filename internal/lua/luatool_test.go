@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -43,8 +42,7 @@ func TestLuaToolDefinition(t *testing.T) {
 func TestLuaToolExecute(t *testing.T) {
 	lt := loadTestTool(t, "testdata/word_count.lua")
 
-	args := api.NewToolCallFunctionArguments()
-	args.Set("text", "hello world foo")
+	args := map[string]any{"text": "hello world foo"}
 
 	result, err := lt.Execute(context.Background(), args)
 	require.NoError(t, err)
@@ -54,7 +52,7 @@ func TestLuaToolExecute(t *testing.T) {
 func TestLuaToolExecuteEmptyArgs(t *testing.T) {
 	lt := loadTestTool(t, "testdata/word_count.lua")
 
-	args := api.NewToolCallFunctionArguments()
+	args := map[string]any{}
 
 	result, err := lt.Execute(context.Background(), args)
 	require.NoError(t, err)
@@ -82,7 +80,7 @@ func TestLuaToolExecuteTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err = lt.Execute(ctx, api.NewToolCallFunctionArguments())
+	_, err = lt.Execute(ctx, map[string]any{})
 	assert.Error(t, err, "should error on context timeout")
 }
 
@@ -108,10 +106,11 @@ func TestArgsToLuaTable(t *testing.T) {
 	L := NewSandboxedState(context.Background())
 	defer L.Close()
 
-	args := api.NewToolCallFunctionArguments()
-	args.Set("str_val", "hello")
-	args.Set("num_val", float64(42))
-	args.Set("bool_val", true)
+	args := map[string]any{
+		"str_val":  "hello",
+		"num_val":  float64(42),
+		"bool_val": true,
+	}
 
 	tbl := ArgsToLuaTable(L, args)
 
@@ -135,7 +134,7 @@ func TestLuaToolImplementsInterface(t *testing.T) {
 	assert.NotEmpty(t, lt.Name())
 	def := lt.Definition()
 	assert.Equal(t, "function", def.Type)
-	_, err := lt.Execute(context.Background(), api.NewToolCallFunctionArguments())
+	_, err := lt.Execute(context.Background(), map[string]any{})
 	assert.NoError(t, err)
 }
 

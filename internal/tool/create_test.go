@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,12 +34,9 @@ const noNameSource = `return {
     execute = function(args) return "ok" end
 }`
 
-// makeToolArgs constructs api.ToolCallFunctionArguments from a map.
-func makeToolArgs(m map[string]interface{}) api.ToolCallFunctionArguments {
-	data, _ := json.Marshal(m)
-	args := api.NewToolCallFunctionArguments()
-	_ = json.Unmarshal(data, &args)
-	return args
+// makeToolArgs constructs tool arguments from a map.
+func makeToolArgs(m map[string]interface{}) map[string]any {
+	return m
 }
 
 func TestCreateLuaToolName(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 )
 
 const maxOutput = 4096
@@ -56,31 +56,30 @@ func (s *ShellTool) Name() string {
 	return "shell_exec"
 }
 
-// Definition returns the Ollama API tool definition for ChatRequest.Tools.
-func (s *ShellTool) Definition() api.Tool {
-	props := api.NewToolPropertiesMap()
-	props.Set("command", api.ToolProperty{
-		Type:        api.PropertyType{"string"},
-		Description: "The shell command to execute",
-	})
-
-	return api.Tool{
+// Definition returns the tool definition for ChatRequest.Tools.
+func (s *ShellTool) Definition() model.ToolDefinition {
+	return model.ToolDefinition{
 		Type: "function",
-		Function: api.ToolFunction{
+		Function: model.ToolFunction{
 			Name:        "shell_exec",
 			Description: "Execute a shell command and return stdout, stderr, and exit code. Use this to run programs, inspect the filesystem, or perform system operations.",
-			Parameters: api.ToolFunctionParameters{
-				Type:       "object",
-				Required:   []string{"command"},
-				Properties: props,
+			Parameters: model.ToolFunctionParameters{
+				Type:     "object",
+				Required: []string{"command"},
+				Properties: map[string]model.ToolProperty{
+					"command": {
+						Type:        model.PropertyType{"string"},
+						Description: "The shell command to execute",
+					},
+				},
 			},
 		},
 	}
 }
 
 // Execute runs the shell command from the tool call arguments.
-func (s *ShellTool) Execute(ctx context.Context, args api.ToolCallFunctionArguments) (string, error) {
-	cmdVal, ok := args.Get("command")
+func (s *ShellTool) Execute(ctx context.Context, args map[string]any) (string, error) {
+	cmdVal, ok := args["command"]
 	if !ok {
 		return "", fmt.Errorf("missing required argument: command")
 	}

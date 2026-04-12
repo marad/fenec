@@ -7,15 +7,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func makeDirArgs(path string) api.ToolCallFunctionArguments {
-	args := api.NewToolCallFunctionArguments()
-	args.Set("path", path)
-	return args
+func makeDirArgs(path string) map[string]any {
+	return map[string]any{"path": path}
 }
 
 func TestListDirSorted(t *testing.T) {

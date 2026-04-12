@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 
 	feneclua "github.com/marad/fenec/internal/lua"
 )
@@ -34,23 +34,22 @@ func (u *UpdateLuaTool) Name() string {
 	return "update_lua_tool"
 }
 
-// Definition returns the Ollama API tool definition for ChatRequest.Tools.
-func (u *UpdateLuaTool) Definition() api.Tool {
-	props := api.NewToolPropertiesMap()
-	props.Set("code", api.ToolProperty{
-		Type:        api.PropertyType{"string"},
-		Description: "Complete Lua tool source code. Must return a table with name, description, and execute fields.",
-	})
-
-	return api.Tool{
+// Definition returns the tool definition for ChatRequest.Tools.
+func (u *UpdateLuaTool) Definition() model.ToolDefinition {
+	return model.ToolDefinition{
 		Type: "function",
-		Function: api.ToolFunction{
+		Function: model.ToolFunction{
 			Name:        "update_lua_tool",
 			Description: "Update an existing Lua tool by providing its complete new source code. The tool is validated before replacement.",
-			Parameters: api.ToolFunctionParameters{
-				Type:       "object",
-				Required:   []string{"code"},
-				Properties: props,
+			Parameters: model.ToolFunctionParameters{
+				Type:     "object",
+				Required: []string{"code"},
+				Properties: map[string]model.ToolProperty{
+					"code": {
+						Type:        model.PropertyType{"string"},
+						Description: "Complete Lua tool source code. Must return a table with name, description, and execute fields.",
+					},
+				},
 			},
 		},
 	}
@@ -59,8 +58,8 @@ func (u *UpdateLuaTool) Definition() api.Tool {
 // Execute validates and replaces an existing Lua tool with new source code.
 // Validation errors are returned as tool result strings so the model can self-correct.
 // If validation fails, the existing tool is not modified.
-func (u *UpdateLuaTool) Execute(_ context.Context, args api.ToolCallFunctionArguments) (string, error) {
-	codeVal, ok := args.Get("code")
+func (u *UpdateLuaTool) Execute(_ context.Context, args map[string]any) (string, error) {
+	codeVal, ok := args["code"]
 	if !ok {
 		return "", fmt.Errorf("missing required argument: code")
 	}

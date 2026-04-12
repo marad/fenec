@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 )
 
 // ToolEventNotifier is called when a tool is created, updated, or deleted.
@@ -26,11 +26,11 @@ type Tool interface {
 	// Name returns the unique identifier used for dispatch.
 	Name() string
 
-	// Definition returns the Ollama API tool definition for ChatRequest.Tools.
-	Definition() api.Tool
+	// Definition returns the tool definition for ChatRequest.Tools.
+	Definition() model.ToolDefinition
 
 	// Execute runs the tool with the given arguments and returns the result string.
-	Execute(ctx context.Context, args api.ToolCallFunctionArguments) (string, error)
+	Execute(ctx context.Context, args map[string]any) (string, error)
 }
 
 // Registry holds registered tools and dispatches tool calls by name.
@@ -97,13 +97,13 @@ func (r *Registry) ToolInfo() []ToolInfoEntry {
 	return entries
 }
 
-// Tools returns the Ollama API tool definitions for all registered tools.
-// The returned slice is suitable for passing to ChatRequest.Tools.
-func (r *Registry) Tools() api.Tools {
+// Tools returns the tool definitions for all registered tools.
+// The returned slice is suitable for passing to ChatService.StreamChat.
+func (r *Registry) Tools() []model.ToolDefinition {
 	if len(r.tools) == 0 {
 		return nil
 	}
-	defs := make(api.Tools, 0, len(r.tools))
+	defs := make([]model.ToolDefinition, 0, len(r.tools))
 	for _, t := range r.tools {
 		defs = append(defs, t.Definition())
 	}
@@ -112,7 +112,7 @@ func (r *Registry) Tools() api.Tools {
 
 // Dispatch looks up a tool by the call's function name and executes it.
 // Returns an error if the tool is not found.
-func (r *Registry) Dispatch(ctx context.Context, call api.ToolCall) (string, error) {
+func (r *Registry) Dispatch(ctx context.Context, call model.ToolCall) (string, error) {
 	t, ok := r.tools[call.Function.Name]
 	if !ok {
 		return "", fmt.Errorf("unknown tool: %s", call.Function.Name)

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 )
 
 // DeleteLuaTool is a built-in tool that allows the agent to remove Lua tools
@@ -32,23 +32,22 @@ func (d *DeleteLuaTool) Name() string {
 	return "delete_lua_tool"
 }
 
-// Definition returns the Ollama API tool definition for ChatRequest.Tools.
-func (d *DeleteLuaTool) Definition() api.Tool {
-	props := api.NewToolPropertiesMap()
-	props.Set("name", api.ToolProperty{
-		Type:        api.PropertyType{"string"},
-		Description: "Name of the Lua tool to delete",
-	})
-
-	return api.Tool{
+// Definition returns the tool definition for ChatRequest.Tools.
+func (d *DeleteLuaTool) Definition() model.ToolDefinition {
+	return model.ToolDefinition{
 		Type: "function",
-		Function: api.ToolFunction{
+		Function: model.ToolFunction{
 			Name:        "delete_lua_tool",
 			Description: "Delete a Lua tool by name. Removes the tool file from disk and unregisters it.",
-			Parameters: api.ToolFunctionParameters{
-				Type:       "object",
-				Required:   []string{"name"},
-				Properties: props,
+			Parameters: model.ToolFunctionParameters{
+				Type:     "object",
+				Required: []string{"name"},
+				Properties: map[string]model.ToolProperty{
+					"name": {
+						Type:        model.PropertyType{"string"},
+						Description: "Name of the Lua tool to delete",
+					},
+				},
 			},
 		},
 	}
@@ -57,8 +56,8 @@ func (d *DeleteLuaTool) Definition() api.Tool {
 // Execute removes a Lua tool from disk and the registry.
 // Returns error strings (not Go errors) for user-facing issues like
 // not-found or built-in rejection.
-func (d *DeleteLuaTool) Execute(_ context.Context, args api.ToolCallFunctionArguments) (string, error) {
-	nameVal, ok := args.Get("name")
+func (d *DeleteLuaTool) Execute(_ context.Context, args map[string]any) (string, error) {
+	nameVal, ok := args["name"]
 	if !ok {
 		return "", fmt.Errorf("missing required argument: name")
 	}
