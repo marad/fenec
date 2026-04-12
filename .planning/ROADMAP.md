@@ -41,11 +41,11 @@ See `.planning/milestones/v1.0-ROADMAP.md` for full phase details.
   1. User can start Fenec and chat with Ollama exactly as before -- no behavioral difference from v1.0
   2. No import of `github.com/ollama/ollama/api` types exists outside the Ollama adapter package
   3. All existing tests pass with the new canonical types
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 07-01: TBD
-- [ ] 07-02: TBD
+- [ ] 07-01-PLAN.md -- Create internal/model package with canonical types and JSON round-trip tests
+- [ ] 07-02-PLAN.md -- Migrate all packages to canonical types with Ollama conversion layer
 
 ### Phase 8: Provider Abstraction
 **Goal**: A Provider interface exists and the Ollama backend works through it, proving the abstraction supports streaming chat and tool calling
@@ -119,7 +119,7 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
 | 4. Lua Runtime | v1.0 | 2/2 | Complete | 2026-04-11 |
 | 5. Self-Extension | v1.0 | 2/2 | Complete | 2026-04-11 |
 | 6. File Tools | v1.0 | 2/2 | Complete | 2026-04-12 |
-| 7. Canonical Types | v1.1 | 0/0 | Not started | - |
+| 7. Canonical Types | v1.1 | 0/2 | Planning complete | - |
 | 8. Provider Abstraction | v1.1 | 0/0 | Not started | - |
 | 9. Configuration | v1.1 | 0/0 | Not started | - |
 | 10. OpenAI-Compatible Client | v1.1 | 0/0 | Not started | - |
