@@ -335,8 +335,13 @@ func (r *REPL) sendMessage(input string) {
 		sp.Start()
 
 		var content strings.Builder
+		var thinkingBuf strings.Builder
 		notifier := chat.NewFirstTokenNotifier(func() {
 			sp.Stop()
+			// Show last 3 lines of thinking before response starts.
+			if summary := render.FormatThinking(thinkingBuf.String(), 3); summary != "" {
+				fmt.Fprintln(r.rl.Stdout(), summary)
+			}
 		})
 
 		// Stream the response.
@@ -344,7 +349,9 @@ func (r *REPL) sendMessage(input string) {
 			notifier.Notify()
 			fmt.Fprint(r.rl.Stdout(), token)
 			content.WriteString(token)
-		}, nil)
+		}, func(chunk string) {
+			thinkingBuf.WriteString(chunk)
+		})
 
 		sp.Stop()
 
@@ -422,13 +429,21 @@ func (r *REPL) sendMessage(input string) {
 	sp := render.NewSpinner(r.rl.Stdout())
 	sp.Start()
 	var content strings.Builder
-	notifier := chat.NewFirstTokenNotifier(func() { sp.Stop() })
+	var thinkingBuf2 strings.Builder
+	notifier := chat.NewFirstTokenNotifier(func() {
+		sp.Stop()
+		if summary := render.FormatThinking(thinkingBuf2.String(), 3); summary != "" {
+			fmt.Fprintln(r.rl.Stdout(), summary)
+		}
+	})
 
 	msg, _, err := r.client.StreamChat(ctx, r.conv, nil, func(token string) {
 		notifier.Notify()
 		fmt.Fprint(r.rl.Stdout(), token)
 		content.WriteString(token)
-	}, nil)
+	}, func(chunk string) {
+		thinkingBuf2.WriteString(chunk)
+	})
 	sp.Stop()
 
 	if err != nil {
@@ -681,6 +696,13 @@ func (r *REPL) refreshSystemPrompt() {
 // SetDebug enables or disables debug output (e.g., tool result display).
 func (r *REPL) SetDebug(on bool) {
 	r.debug = on
+}
+
+// EnableThink enables model thinking/reasoning output on the conversation.
+// When enabled, thinking content is captured and the last 3 lines are
+// displayed in muted style before each response.
+func (r *REPL) EnableThink() {
+	r.conv.Think = true
 }
 
 // RefreshSystemPrompt is the exported wrapper for refreshSystemPrompt.

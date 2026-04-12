@@ -3,6 +3,7 @@ package render
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 )
@@ -28,6 +29,11 @@ var (
 	// toolCallStyle styles tool call indicators (muted gray).
 	toolCallStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#6B7089"))
+
+	// thinkingStyle styles model thinking/reasoning output (dimmed).
+	thinkingStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#565B73")).
+		Italic(true)
 )
 
 // FormatPrompt returns the readline prompt string: [modelName]>
@@ -59,6 +65,35 @@ func FormatToolResult(result string) string {
 		return toolCallStyle.Render("[result: " + result + "]")
 	}
 	return toolCallStyle.Render(fmt.Sprintf("[result: %d bytes]", len(result)))
+}
+
+// FormatThinking returns the last maxLines non-empty lines of thinking content,
+// styled in a muted italic style. Returns empty string if thinking is empty.
+func FormatThinking(thinking string, maxLines int) string {
+	if strings.TrimSpace(thinking) == "" {
+		return ""
+	}
+
+	// Split into lines and filter out empty ones.
+	allLines := strings.Split(thinking, "\n")
+	var lines []string
+	for _, l := range allLines {
+		if strings.TrimSpace(l) != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+
+	// Take last maxLines.
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+
+	label := thinkingStyle.Render("[thinking]")
+	body := thinkingStyle.Render(strings.Join(lines, "\n"))
+	return label + "\n" + body
 }
 
 // FormatToolEvent returns a styled banner for tool lifecycle events.

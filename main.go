@@ -208,6 +208,7 @@ func main() {
 	}
 	replRef = r
 	r.SetDebug(*debugMode)
+	r.EnableThink()
 
 	// Pipe mode: read stdin line-by-line, send to model, exit on EOF.
 	if *pipeMode {
