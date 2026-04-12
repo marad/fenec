@@ -22,6 +22,7 @@ import (
 func main() {
 	// Parse flags (per D-16: --host flag to override default).
 	host := pflag.StringP("host", "H", "", "Ollama server address (default: localhost:11434)")
+	modelName := pflag.StringP("model", "m", "", "Ollama model to use (default: first available)")
 	pipeMode := pflag.BoolP("pipe", "p", false, "Read all stdin as a single message and send to model")
 	debugMode := pflag.BoolP("debug", "d", false, "Show tool call results and other debug output")
 	yoloMode := pflag.BoolP("yolo", "y", false, "Auto-approve all dangerous commands (use with caution)")
@@ -33,6 +34,7 @@ func main() {
 
 Usage:
   fenec                    Start interactive chat
+  fenec --model gemma4     Use a specific model
   echo "prompt" | fenec    Send piped input to model
   fenec --yolo             Auto-approve all tool commands
 
@@ -87,6 +89,26 @@ Flags:
 		os.Exit(1)
 	}
 	defaultModel := models[0]
+
+	// Handle --model flag: validate and override default model selection.
+	if *modelName != "" {
+		found := false
+		for _, m := range models {
+			if m == *modelName {
+				found = true
+				defaultModel = m
+				break
+			}
+		}
+		if !found {
+			fmt.Fprintf(os.Stderr, "Model %q not found. Available models:\n", *modelName)
+			for _, m := range models {
+				fmt.Fprintf(os.Stderr, "  - %s\n", m)
+			}
+			fmt.Fprintf(os.Stderr, "\nPull it with: ollama pull %s\n", *modelName)
+			os.Exit(1)
+		}
+	}
 
 	// Load system prompt (per D-15).
 	systemPrompt, err := config.LoadSystemPrompt()
