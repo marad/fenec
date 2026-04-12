@@ -155,13 +155,18 @@ func main() {
 		}
 	}
 
-	// Register self-extension tools (built-in, alongside shell_exec).
-	createTool := tool.NewCreateLuaTool(toolsDir, registry, notifier)
-	registry.Register(createTool)
-	updateTool := tool.NewUpdateLuaTool(toolsDir, registry, notifier)
-	registry.Register(updateTool)
-	deleteTool := tool.NewDeleteLuaTool(toolsDir, registry, notifier)
-	registry.Register(deleteTool)
+	// Register self-extension tools only when toolsDir is resolved.
+	// Without a valid tools directory, create/update/delete would write to CWD.
+	if toolsDir != "" {
+		createTool := tool.NewCreateLuaTool(toolsDir, registry, notifier)
+		registry.Register(createTool)
+		updateTool := tool.NewUpdateLuaTool(toolsDir, registry, notifier)
+		registry.Register(updateTool)
+		deleteTool := tool.NewDeleteLuaTool(toolsDir, registry, notifier)
+		registry.Register(deleteTool)
+	} else {
+		slog.Warn("self-extension tools disabled: no tools directory available")
+	}
 
 	// Create and run REPL.
 	r, err := repl.NewREPL(client, defaultModel, systemPrompt, tracker, store, registry)

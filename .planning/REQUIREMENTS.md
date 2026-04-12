@@ -104,10 +104,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LUA-04 | Phase 4 | Complete |
 | LUA-05 | Phase 5 | Complete |
 | LUA-06 | Phase 4 | Complete |
-| FILE-01 | Phase 6 | Planned |
-| FILE-02 | Phase 6 | Planned |
-| FILE-03 | Phase 6 | Planned |
-| FILE-04 | Phase 6 | Planned |
+| FILE-01 | Phase 6 | Complete |
+| FILE-02 | Phase 6 | Complete |
+| FILE-03 | Phase 6 | Complete |
+| FILE-04 | Phase 6 | Complete |
 
 **Coverage:**
 - v1 requirements: 23 total
