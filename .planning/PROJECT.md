@@ -2,35 +2,43 @@
 
 ## What This Is
 
-A personal AI assistant platform built in Go with LuaJIT extensibility. Provides a CLI chat interface that connects to local Ollama models (like Gemma 4). The agent can use tools via structured function calling and extend itself by writing Lua scripts that persist as new tools — becoming more capable over time.
+A personal AI assistant platform built in Go with Lua extensibility. Provides a CLI chat interface that connects to local Ollama models (like Gemma 4). The agent can use tools via structured function calling and extend itself by writing Lua scripts that persist as new tools — becoming more capable over time.
 
 ## Core Value
 
 An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
 
+## Current State
+
+Shipped **v1.0** on 2026-04-12. The platform foundation is complete:
+- 6,970 lines of Go across 52 source files
+- 8 built-in tools: shell_exec, read_file, write_file, edit_file, list_directory, create_lua_tool, update_lua_tool, delete_lua_tool
+- Sandboxed Lua runtime with startup loading and hot-reload
+- Session persistence with auto-save
+- Context tracking with automatic truncation
+- Path safety (deny list + CWD approval gating)
+
 ## Requirements
 
 ### Validated
 
-- [x] CLI chat interface — basic REPL for conversing with the agent (Validated in Phase 1: Foundation)
-- [x] Ollama integration — connect to local models, send messages, stream responses (Validated in Phase 1: Foundation)
-- [x] Multi-turn conversation — context maintained across turns, token tracking with auto-truncation (Validated in Phase 2: Conversation)
-- [x] Session persistence — save/load conversations to disk, auto-save on exit (Validated in Phase 2: Conversation)
-- [x] Tool system — model receives available tools in prompt, outputs structured tool calls (Validated in Phase 3: Tool Execution)
-- [x] Tool execution engine — parse tool calls from model output, dispatch to handlers, return results (Validated in Phase 3: Tool Execution)
-- [x] Built-in bash tool — execute shell commands and return output (Validated in Phase 3: Tool Execution)
-- [x] LuaJIT integration — sandboxed Lua 5.1 VM, LuaTool adapter, startup loader (Validated in Phase 4: Lua Runtime)
-- [x] Self-extension — agent can write new Lua tools that persist to disk and become available in future sessions (Validated in Phase 5: Self-Extension)
-- [x] Tool discovery — agent sees all available tools (built-in + Lua) in its system prompt (Validated in Phase 5: Self-Extension)
-- [x] File tools — built-in read_file, write_file, edit_file, list_directory with path safety (Validated in Phase 6: File Tools)
+- ✓ CLI chat interface — v1.0
+- ✓ Ollama streaming integration — v1.0
+- ✓ Multi-turn conversation with context tracking — v1.0
+- ✓ Session persistence with auto-save — v1.0
+- ✓ Tool system with structured function calling — v1.0
+- ✓ Shell execution with approval for dangerous commands — v1.0
+- ✓ Sandboxed Lua runtime with startup loading — v1.0
+- ✓ Self-extension (agent writes its own tools) — v1.0
+- ✓ Built-in file tools with path safety — v1.0
 
 ### Active
 
-(No active requirements — all v1.0 milestone requirements validated)
+(No active requirements — next milestone not yet planned)
 
 ### Out of Scope
 
-- Email reading/tagging — future milestone, not part of the platform foundation
+- Email reading/tagging — future milestone
 - Note search/organization — future milestone
 - TUI with panels/history/status — start with basic REPL, enhance later
 - Cloud/remote model providers — focus on local Ollama
@@ -41,14 +49,14 @@ An extensible AI agent platform that can grow its own capabilities through self-
 
 - Ollama provides an OpenAI-compatible API for local model inference
 - Gemma 4 supports tool/function calling via structured output
-- LuaJIT (via gopher-lua or similar) embeds well in Go and provides fast script execution
-- The self-extension pattern means the agent's tool library grows with use — Lua scripts written by the agent are saved to a tools directory and loaded on startup
-- This is a foundation project — the architecture should make it straightforward to add new built-in tools and integrations in future milestones
+- gopher-lua (pure Go Lua 5.1 VM) embeds well and provides fast script execution
+- The self-extension pattern means the agent's tool library grows with use
+- Architecture is designed for easy addition of new built-in tools and integrations
 
 ## Constraints
 
 - **Language**: Go — performance, single binary deployment, strong concurrency
-- **Scripting**: LuaJIT — embedded scripting for tool extensibility
+- **Scripting**: Lua 5.1 (gopher-lua) — embedded scripting for tool extensibility
 - **Models**: Ollama local models — no cloud dependencies
 - **Interface**: CLI — simple REPL to start
 
@@ -56,26 +64,16 @@ An extensible AI agent platform that can grow its own capabilities through self-
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Go + LuaJIT | Go for core performance and deployment simplicity, LuaJIT for lightweight embedded scripting that the agent itself can author | — Pending |
-| Ollama as model backend | Local-first, no cloud costs, compatible with Gemma 4 and other open models | — Pending |
-| Tool calling via prompt injection | Model sees tool list in system prompt and outputs structured calls — works with models that support function calling format | — Pending |
+| Go + gopher-lua | Go for core performance, pure-Go Lua VM for portable embedding | ✓ Good — single binary, no cgo |
+| Ollama native API client | Local-first, no cloud costs, dogfooded by Ollama CLI itself | ✓ Good — full tool calling support |
+| Tool calling via system prompt | Model sees tool list and outputs structured calls | ✓ Good — works with Gemma 4 |
+| ApproverFunc callback pattern | Deferred approval logic allows reuse across tool types | ✓ Good — used by shell, write, edit |
+| Registry with provenance | Track built-in vs Lua tools for safe self-extension | ✓ Good — prevents overwriting built-ins |
+| Path deny list + CWD boundary | Layered safety for file operations | ✓ Good — deny-before-approve ordering |
 
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
 
-**After each phase transition** (via `/gsd:transition`):
-1. Requirements invalidated? → Move to Out of Scope with reason
-2. Requirements validated? → Move to Validated with phase reference
-3. New requirements emerged? → Add to Active
-4. Decisions to log? → Add to Key Decisions
-5. "What This Is" still accurate? → Update if drifted
-
-**After each milestone** (via `/gsd:complete-milestone`):
-1. Full review of all sections
-2. Core Value check — still the right priority?
-3. Audit Out of Scope — reasons still valid?
-4. Update Context with current state
-
 ---
-*Last updated: 2026-04-11 after Phase 6 completion*
+*Last updated: 2026-04-12 after v1.0 milestone completion*
