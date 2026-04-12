@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Provider Support
 status: unknown
-stopped_at: Completed 07-01-PLAN.md (canonical types)
-last_updated: "2026-04-12T18:57:26.258Z"
+stopped_at: Completed 07-02-PLAN.md (type migration)
+last_updated: "2026-04-12T19:09:52.833Z"
 last_activity: 2026-04-12
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -48,6 +48,7 @@ Plan: 2 of 2
 
 *Updated after each plan completion*
 | Phase 07-canonical-types P01 | 2min | 1 tasks | 6 files |
+| Phase 07-canonical-types P02 | 10min | 2 tasks | 29 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,8 @@ Recent decisions affecting current work:
 - `--model provider/model` with `/` as delimiter (not `:`)
 - `/model` REPL command groups models by provider
 - [Phase 07-canonical-types]: Canonical model types use plain maps (map[string]ToolProperty, map[string]any) instead of Ollama ordered maps for simplicity
+- [Phase 07-canonical-types]: Used mdl alias for internal/model in chat package to avoid parameter name shadowing
+- [Phase 07-canonical-types]: Conversion functions placed in stream.go as the adapter boundary between canonical types and ollama/api
 
 ### Pending Todos
 
@@ -86,5 +89,5 @@ None yet.
 ## Session Continuity
 
 Last activity: 2026-04-12
-Stopped at: Completed 07-01-PLAN.md (canonical types)
+Stopped at: Completed 07-02-PLAN.md (type migration)
 Resume file: None
