@@ -8,15 +8,17 @@ A personal AI assistant platform built in Go with Lua extensibility. Provides a 
 
 An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
 
-## Current State
+## Current Milestone: v1.1 Multi-Provider Support
 
-Shipped **v1.0** on 2026-04-12. The platform foundation is complete:
-- 6,970 lines of Go across 52 source files
-- 8 built-in tools: shell_exec, read_file, write_file, edit_file, list_directory, create_lua_tool, update_lua_tool, delete_lua_tool
-- Sandboxed Lua runtime with startup loading and hot-reload
-- Session persistence with auto-save
-- Context tracking with automatic truncation
-- Path safety (deny list + CWD approval gating)
+**Goal:** Enable Fenec to connect to any LLM provider (Ollama, LM Studio, OpenAI) through a config-driven provider abstraction with unified tool calling.
+
+**Target features:**
+- Provider abstraction layer with named providers and type-based protocol selection
+- OpenAI-compatible API client for LM Studio, OpenAI, and other compatible backends
+- Config-driven provider definitions (type, URL, API key, model overrides)
+- `--model provider/model` syntax for unified model selection with provider routing
+- Model discovery from providers with optional config overrides
+- Tool calling support across all provider types
 
 ## Requirements
 
@@ -34,14 +36,18 @@ Shipped **v1.0** on 2026-04-12. The platform foundation is complete:
 
 ### Active
 
-(No active requirements — next milestone not yet planned)
+- [ ] Provider abstraction with named providers and type-based protocol selection
+- [ ] OpenAI-compatible API client with tool calling
+- [ ] Config-driven provider definitions
+- [ ] Unified `--model provider/model` selection with provider routing
+- [ ] Model discovery from providers
 
 ### Out of Scope
 
 - Email reading/tagging — future milestone
 - Note search/organization — future milestone
 - TUI with panels/history/status — start with basic REPL, enhance later
-- Cloud/remote model providers — focus on local Ollama
+- Cloud/remote model providers — ~~focus on local Ollama~~ now supported via OpenAI-compatible provider type
 - Multi-user support — personal assistant, single user
 - Web or GUI interface — CLI only for now
 
@@ -75,5 +81,18 @@ Shipped **v1.0** on 2026-04-12. The platform foundation is complete:
 
 This document evolves at phase transitions and milestone boundaries.
 
+**After each phase transition** (via `/gsd:transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-04-12 after v1.0 milestone completion*
+*Last updated: 2026-04-12 after v1.1 milestone start*
