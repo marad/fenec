@@ -3,17 +3,17 @@ package session
 import (
 	"time"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 )
 
 // Session represents a saved conversation.
 type Session struct {
-	ID         string        `json:"id"`
-	Model      string        `json:"model"`
-	CreatedAt  time.Time     `json:"created_at"`
-	UpdatedAt  time.Time     `json:"updated_at"`
-	Messages   []api.Message `json:"messages"`
-	TokenCount int           `json:"token_count"`
+	ID         string          `json:"id"`
+	Model      string          `json:"model"`
+	CreatedAt  time.Time       `json:"created_at"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+	Messages   []model.Message `json:"messages"`
+	TokenCount int             `json:"token_count"`
 }
 
 // SessionInfo is a lightweight summary for listing sessions without loading full message history.

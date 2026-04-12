@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	mdl "github.com/marad/fenec/internal/model"
 	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -458,7 +459,7 @@ func TestStreamChatPassesTools(t *testing.T) {
 	client := newClientWithAPI(mock)
 	conv := NewConversation("test", "system")
 	conv.AddUser("hello")
-	tools := api.Tools{api.Tool{Type: "function", Function: api.ToolFunction{Name: "test_tool"}}}
+	tools := []mdl.ToolDefinition{{Type: "function", Function: mdl.ToolFunction{Name: "test_tool"}}}
 	_, _, err := client.StreamChat(context.Background(), conv, tools, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, capturedReq)

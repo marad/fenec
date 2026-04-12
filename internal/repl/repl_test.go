@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/marad/fenec/internal/model"
 	"github.com/marad/fenec/internal/session"
-	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -110,8 +110,8 @@ func TestAutoSaveCalledOnce(t *testing.T) {
 	sess := session.NewSession("test-model")
 	// Add enough messages so HasContent returns true (>1 message).
 	sess.Messages = append(sess.Messages,
-		api.Message{Role: "system", Content: "system prompt"},
-		api.Message{Role: "user", Content: "hello"},
+		model.Message{Role: "system", Content: "system prompt"},
+		model.Message{Role: "user", Content: "hello"},
 	)
 
 	// We cannot easily construct a full REPL in tests (requires readline, etc.),

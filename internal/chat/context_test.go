@@ -3,7 +3,7 @@ package chat
 import (
 	"testing"
 
-	"github.com/ollama/ollama/api"
+	mdl "github.com/marad/fenec/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,7 +56,7 @@ func TestContextTrackerTruncateOldestPreservesSystemMessage(t *testing.T) {
 	ct.Update(60, 20) // Total = 80, above 50
 
 	conv := &Conversation{
-		Messages: []api.Message{
+		Messages: []mdl.Message{
 			{Role: "system", Content: "You are helpful."},
 			{Role: "user", Content: "Hello"},
 			{Role: "assistant", Content: "Hi there!"},
@@ -80,7 +80,7 @@ func TestContextTrackerTruncateOldestRemovesPairs(t *testing.T) {
 	ct.Update(60, 20) // Total = 80, above 50
 
 	conv := &Conversation{
-		Messages: []api.Message{
+		Messages: []mdl.Message{
 			{Role: "system", Content: "You are helpful."},
 			{Role: "user", Content: "First question"},
 			{Role: "assistant", Content: "First answer"},
@@ -101,7 +101,7 @@ func TestContextTrackerTruncateOldestReturnsRemovedCount(t *testing.T) {
 	ct.Update(60, 20) // Total = 80, above 50
 
 	conv := &Conversation{
-		Messages: []api.Message{
+		Messages: []mdl.Message{
 			{Role: "system", Content: "You are helpful."},
 			{Role: "user", Content: "Hello"},
 			{Role: "assistant", Content: "Hi!"},
@@ -118,7 +118,7 @@ func TestContextTrackerTruncateOldestOnlySystemReturnsZero(t *testing.T) {
 	ct.Update(60, 20) // Total = 80, above 50
 
 	conv := &Conversation{
-		Messages: []api.Message{
+		Messages: []mdl.Message{
 			{Role: "system", Content: "You are helpful."},
 		},
 	}
@@ -133,7 +133,7 @@ func TestContextTrackerTruncateOldestSingleUserMessage(t *testing.T) {
 	ct.Update(60, 20) // Total = 80, above 50
 
 	conv := &Conversation{
-		Messages: []api.Message{
+		Messages: []mdl.Message{
 			{Role: "system", Content: "You are helpful."},
 			{Role: "user", Content: "Hello"},
 		},
@@ -150,7 +150,7 @@ func TestContextTrackerTruncateOldestNoTruncationNeeded(t *testing.T) {
 	ct.Update(100, 50) // Total = 150, well below 6963
 
 	conv := &Conversation{
-		Messages: []api.Message{
+		Messages: []mdl.Message{
 			{Role: "system", Content: "You are helpful."},
 			{Role: "user", Content: "Hello"},
 			{Role: "assistant", Content: "Hi!"},
@@ -167,7 +167,7 @@ func TestContextTrackerTruncateOldestWithoutSystemMessage(t *testing.T) {
 	ct.Update(60, 20) // Total = 80, above 50
 
 	conv := &Conversation{
-		Messages: []api.Message{
+		Messages: []mdl.Message{
 			{Role: "user", Content: "Hello"},
 			{Role: "assistant", Content: "Hi!"},
 			{Role: "user", Content: "Question"},

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +36,7 @@ func TestSessionJSONRoundTrip(t *testing.T) {
 		Model:     "gemma4:latest",
 		CreatedAt: time.Date(2026, 4, 11, 10, 30, 0, 0, time.UTC),
 		UpdatedAt: time.Date(2026, 4, 11, 10, 35, 0, 0, time.UTC),
-		Messages: []api.Message{
+		Messages: []model.Message{
 			{Role: "system", Content: "You are helpful."},
 			{Role: "user", Content: "Hello"},
 			{Role: "assistant", Content: "Hi there!"},
@@ -89,7 +89,7 @@ func TestHasContentEmpty(t *testing.T) {
 
 func TestHasContentSystemOnly(t *testing.T) {
 	sess := NewSession("model")
-	sess.Messages = []api.Message{
+	sess.Messages = []model.Message{
 		{Role: "system", Content: "You are helpful."},
 	}
 	assert.False(t, sess.HasContent(), "Session with only system message should not have content")
@@ -97,7 +97,7 @@ func TestHasContentSystemOnly(t *testing.T) {
 
 func TestHasContentWithUserMessage(t *testing.T) {
 	sess := NewSession("model")
-	sess.Messages = []api.Message{
+	sess.Messages = []model.Message{
 		{Role: "system", Content: "You are helpful."},
 		{Role: "user", Content: "Hello"},
 	}

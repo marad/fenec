@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	mdl "github.com/marad/fenec/internal/model"
 	"github.com/ollama/ollama/api"
 )
 
@@ -15,7 +16,7 @@ func boolPtr(b bool) *bool { return &b }
 // onToken is called for each content chunk as it arrives.
 // The full assistant message and Ollama Metrics are returned after streaming completes.
 // Context cancellation stops the stream (per D-04: Ctrl+C cancels active generation).
-func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.Tools, onToken func(string), onThinking func(string)) (*api.Message, *api.Metrics, error) {
+func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools []mdl.ToolDefinition, onToken func(string), onThinking func(string)) (*mdl.Message, *mdl.StreamMetrics, error) {
 	var content strings.Builder
 	var thinking strings.Builder
 	var metrics api.Metrics
@@ -23,8 +24,8 @@ func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.T
 
 	req := &api.ChatRequest{
 		Model:    conv.Model,
-		Messages: conv.Messages,
-		Tools:    tools,
+		Messages: toOllamaMessages(conv.Messages),
+		Tools:    toOllamaTools(tools),
 		Truncate: boolPtr(false),
 	}
 
@@ -78,11 +79,12 @@ func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.T
 		// If the error is due to context cancellation, return the partial content
 		// along with the error so the caller can distinguish cancellation from failure.
 		if ctx.Err() != nil {
-			finalMsg.Content = content.String()
-			finalMsg.Role = "assistant"
-			return &finalMsg, &metrics, ctx.Err()
+			cancelMsg := mdl.Message{Content: content.String(), Role: "assistant"}
+			cancelMetrics := fromOllamaMetrics(metrics)
+			return &cancelMsg, &cancelMetrics, ctx.Err()
 		}
-		return nil, &metrics, err
+		m := fromOllamaMetrics(metrics)
+		return nil, &m, err
 	}
 
 	// If no Done chunk was received (e.g. stream ended without it),
@@ -92,11 +94,106 @@ func (c *Client) StreamChat(ctx context.Context, conv *Conversation, tools api.T
 		finalMsg.Content = content.String()
 	}
 
-	return &finalMsg, &metrics, nil
+	canonicalMsg := fromOllamaMessage(finalMsg)
+	canonicalMetrics := fromOllamaMetrics(metrics)
+	return &canonicalMsg, &canonicalMetrics, nil
 }
 
 // Compile-time check: Client satisfies ChatService.
 var _ ChatService = (*Client)(nil)
+
+// --- Ollama conversion functions (adapter boundary) ---
+
+// toOllamaMessages converts canonical messages to Ollama API messages.
+func toOllamaMessages(msgs []mdl.Message) []api.Message {
+	out := make([]api.Message, len(msgs))
+	for i, m := range msgs {
+		out[i] = api.Message{
+			Role:       m.Role,
+			Content:    m.Content,
+			Thinking:   m.Thinking,
+			ToolCallID: m.ToolCallID,
+		}
+		for _, tc := range m.ToolCalls {
+			args := api.NewToolCallFunctionArguments()
+			for k, v := range tc.Function.Arguments {
+				args.Set(k, v)
+			}
+			out[i].ToolCalls = append(out[i].ToolCalls, api.ToolCall{
+				ID: tc.ID,
+				Function: api.ToolCallFunction{
+					Index:     tc.Function.Index,
+					Name:      tc.Function.Name,
+					Arguments: args,
+				},
+			})
+		}
+	}
+	return out
+}
+
+// fromOllamaMessage converts an Ollama API message to a canonical message.
+func fromOllamaMessage(msg api.Message) mdl.Message {
+	m := mdl.Message{
+		Role:       msg.Role,
+		Content:    msg.Content,
+		Thinking:   msg.Thinking,
+		ToolCallID: msg.ToolCallID,
+	}
+	for _, tc := range msg.ToolCalls {
+		m.ToolCalls = append(m.ToolCalls, mdl.ToolCall{
+			ID: tc.ID,
+			Function: mdl.ToolCallFunction{
+				Index:     tc.Function.Index,
+				Name:      tc.Function.Name,
+				Arguments: tc.Function.Arguments.ToMap(),
+			},
+		})
+	}
+	return m
+}
+
+// toOllamaTools converts canonical tool definitions to Ollama API tools.
+func toOllamaTools(tools []mdl.ToolDefinition) api.Tools {
+	if tools == nil {
+		return nil
+	}
+	out := make(api.Tools, len(tools))
+	for i, td := range tools {
+		tool := api.Tool{
+			Type: td.Type,
+			Function: api.ToolFunction{
+				Name:        td.Function.Name,
+				Description: td.Function.Description,
+				Parameters: api.ToolFunctionParameters{
+					Type:     td.Function.Parameters.Type,
+					Required: td.Function.Parameters.Required,
+				},
+			},
+		}
+		if td.Function.Parameters.Properties != nil {
+			props := api.NewToolPropertiesMap()
+			for name, prop := range td.Function.Parameters.Properties {
+				props.Set(name, api.ToolProperty{
+					Type:        api.PropertyType(prop.Type),
+					Description: prop.Description,
+					Enum:        prop.Enum,
+				})
+			}
+			tool.Function.Parameters.Properties = props
+		}
+		out[i] = tool
+	}
+	return out
+}
+
+// fromOllamaMetrics converts Ollama API metrics to canonical stream metrics.
+func fromOllamaMetrics(m api.Metrics) mdl.StreamMetrics {
+	return mdl.StreamMetrics{
+		PromptEvalCount: m.PromptEvalCount,
+		EvalCount:       m.EvalCount,
+	}
+}
 
 // FirstTokenNotifier calls onFirst exactly once when the first token arrives.
 // Used by the REPL to stop the thinking spinner on first token.

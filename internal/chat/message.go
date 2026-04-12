@@ -1,10 +1,10 @@
 package chat
 
-import "github.com/ollama/ollama/api"
+import mdl "github.com/marad/fenec/internal/model"
 
 // Conversation holds the message history for a chat session.
 type Conversation struct {
-	Messages      []api.Message
+	Messages      []mdl.Message
 	Model         string
 	ContextLength int  // Maximum context window size in tokens (0 = not set)
 	Think         bool // Enable model thinking/reasoning output
@@ -16,7 +16,7 @@ func NewConversation(model string, systemPrompt string) *Conversation {
 		Model: model,
 	}
 	if systemPrompt != "" {
-		conv.Messages = append(conv.Messages, api.Message{
+		conv.Messages = append(conv.Messages, mdl.Message{
 			Role:    "system",
 			Content: systemPrompt,
 		})
@@ -26,7 +26,7 @@ func NewConversation(model string, systemPrompt string) *Conversation {
 
 // AddUser appends a user message.
 func (c *Conversation) AddUser(content string) {
-	c.Messages = append(c.Messages, api.Message{
+	c.Messages = append(c.Messages, mdl.Message{
 		Role:    "user",
 		Content: content,
 	})
@@ -34,7 +34,7 @@ func (c *Conversation) AddUser(content string) {
 
 // AddAssistant appends an assistant message.
 func (c *Conversation) AddAssistant(content string) {
-	c.Messages = append(c.Messages, api.Message{
+	c.Messages = append(c.Messages, mdl.Message{
 		Role:    "assistant",
 		Content: content,
 	})
@@ -42,13 +42,13 @@ func (c *Conversation) AddAssistant(content string) {
 
 // AddRawMessage appends an arbitrary message to the conversation.
 // Used for assistant messages containing tool calls and tool result messages.
-func (c *Conversation) AddRawMessage(msg api.Message) {
+func (c *Conversation) AddRawMessage(msg mdl.Message) {
 	c.Messages = append(c.Messages, msg)
 }
 
 // AddToolResult appends a tool result message to the conversation.
 func (c *Conversation) AddToolResult(toolCallID string, content string) {
-	c.Messages = append(c.Messages, api.Message{
+	c.Messages = append(c.Messages, mdl.Message{
 		Role:       "tool",
 		Content:    content,
 		ToolCallID: toolCallID,

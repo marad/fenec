@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ollama/ollama/api"
+	"github.com/marad/fenec/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func newTestSession(id, model string, msgs []api.Message) *Session {
+func newTestSession(id, model string, msgs []model.Message) *Session {
 	return &Session{
 		ID:        id,
 		Model:     model,
@@ -25,7 +25,7 @@ func TestStoreSave(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 
-	sess := newTestSession("2026-04-11T10-30-00", "gemma4:latest", []api.Message{
+	sess := newTestSession("2026-04-11T10-30-00", "gemma4:latest", []model.Message{
 		{Role: "user", Content: "Hello"},
 	})
 
@@ -42,7 +42,7 @@ func TestStoreLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 
-	sess := newTestSession("test-roundtrip", "gemma4:latest", []api.Message{
+	sess := newTestSession("test-roundtrip", "gemma4:latest", []model.Message{
 		{Role: "system", Content: "You are helpful."},
 		{Role: "user", Content: "Hello"},
 		{Role: "assistant", Content: "Hi!"},
@@ -79,18 +79,18 @@ func TestStoreListSortedByUpdatedAt(t *testing.T) {
 	store := NewStore(dir)
 
 	// Create sessions with different UpdatedAt times.
-	old := newTestSession("old-session", "model-a", []api.Message{
+	old := newTestSession("old-session", "model-a", []model.Message{
 		{Role: "user", Content: "old"},
 	})
 	old.UpdatedAt = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	middle := newTestSession("mid-session", "model-b", []api.Message{
+	middle := newTestSession("mid-session", "model-b", []model.Message{
 		{Role: "user", Content: "mid"},
 		{Role: "assistant", Content: "reply"},
 	})
 	middle.UpdatedAt = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
-	newest := newTestSession("new-session", "model-c", []api.Message{
+	newest := newTestSession("new-session", "model-c", []model.Message{
 		{Role: "user", Content: "new"},
 	})
 	newest.UpdatedAt = time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
@@ -126,7 +126,7 @@ func TestStoreAutoSave(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 
-	sess := newTestSession("auto-test", "gemma4:latest", []api.Message{
+	sess := newTestSession("auto-test", "gemma4:latest", []model.Message{
 		{Role: "system", Content: "You are helpful."},
 		{Role: "user", Content: "Hello"},
 	})
@@ -144,7 +144,7 @@ func TestStoreAutoSaveIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 
-	sess := newTestSession("idempotent-test", "gemma4:latest", []api.Message{
+	sess := newTestSession("idempotent-test", "gemma4:latest", []model.Message{
 		{Role: "system", Content: "You are helpful."},
 		{Role: "user", Content: "First"},
 	})
@@ -152,7 +152,7 @@ func TestStoreAutoSaveIdempotent(t *testing.T) {
 	require.NoError(t, store.AutoSave(sess))
 
 	// Update session content and auto-save again.
-	sess.Messages = append(sess.Messages, api.Message{Role: "assistant", Content: "Reply"})
+	sess.Messages = append(sess.Messages, model.Message{Role: "assistant", Content: "Reply"})
 	require.NoError(t, store.AutoSave(sess))
 
 	// Should still have exactly one auto-save file, not two.
@@ -177,7 +177,7 @@ func TestStoreAutoSaveSkipsEmptySessions(t *testing.T) {
 	store := NewStore(dir)
 
 	// Session with only a system message.
-	sess := newTestSession("empty-test", "gemma4:latest", []api.Message{
+	sess := newTestSession("empty-test", "gemma4:latest", []model.Message{
 		{Role: "system", Content: "You are helpful."},
 	})
 
@@ -194,7 +194,7 @@ func TestStoreLoadAutoSave(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 
-	sess := newTestSession("load-auto-test", "gemma4:latest", []api.Message{
+	sess := newTestSession("load-auto-test", "gemma4:latest", []model.Message{
 		{Role: "system", Content: "prompt"},
 		{Role: "user", Content: "Hello"},
 	})
@@ -223,13 +223,13 @@ func TestAtomicWriteOverwrite(t *testing.T) {
 	store := NewStore(dir)
 
 	// Save initial session.
-	sess := newTestSession("overwrite-test", "model-a", []api.Message{
+	sess := newTestSession("overwrite-test", "model-a", []model.Message{
 		{Role: "user", Content: "original"},
 	})
 	require.NoError(t, store.Save(sess))
 
 	// Overwrite with different content.
-	sess.Messages = []api.Message{
+	sess.Messages = []model.Message{
 		{Role: "user", Content: "updated"},
 	}
 	sess.Model = "model-b"
@@ -247,7 +247,7 @@ func TestStoreDelete(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 
-	sess := newTestSession("delete-me", "gemma4:latest", []api.Message{
+	sess := newTestSession("delete-me", "gemma4:latest", []model.Message{
 		{Role: "user", Content: "bye"},
 	})
 	require.NoError(t, store.Save(sess))
@@ -276,13 +276,13 @@ func TestStoreListExcludesAutoSave(t *testing.T) {
 	store := NewStore(dir)
 
 	// Save a regular session.
-	sess := newTestSession("regular", "model", []api.Message{
+	sess := newTestSession("regular", "model", []model.Message{
 		{Role: "user", Content: "hi"},
 	})
 	require.NoError(t, store.Save(sess))
 
 	// Auto-save a session.
-	autoSess := newTestSession("auto", "model", []api.Message{
+	autoSess := newTestSession("auto", "model", []model.Message{
 		{Role: "system", Content: "prompt"},
 		{Role: "user", Content: "hello"},
 	})

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	mdl "github.com/marad/fenec/internal/model"
 	"github.com/ollama/ollama/api"
 )
 
@@ -15,7 +16,7 @@ import (
 type ChatService interface {
 	ListModels(ctx context.Context) ([]string, error)
 	Ping(ctx context.Context) error
-	StreamChat(ctx context.Context, conv *Conversation, tools api.Tools, onToken func(string), onThinking func(string)) (*api.Message, *api.Metrics, error)
+	StreamChat(ctx context.Context, conv *Conversation, tools []mdl.ToolDefinition, onToken func(string), onThinking func(string)) (*mdl.Message, *mdl.StreamMetrics, error)
 	GetContextLength(ctx context.Context, model string) (int, error)
 }
 

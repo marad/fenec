@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/chzyer/readline"
-	"github.com/ollama/ollama/api"
 
 	"github.com/marad/fenec/internal/chat"
 	"github.com/marad/fenec/internal/config"
+	"github.com/marad/fenec/internal/model"
 	"github.com/marad/fenec/internal/render"
 	"github.com/marad/fenec/internal/session"
 	"github.com/marad/fenec/internal/tool"
@@ -324,7 +324,7 @@ func (r *REPL) sendMessage(input string) {
 	}()
 
 	// Get tool definitions for ChatRequest (nil if no registry).
-	var tools api.Tools
+	var tools []model.ToolDefinition
 	if r.registry != nil {
 		tools = r.registry.Tools()
 	}
@@ -399,7 +399,7 @@ func (r *REPL) sendMessage(input string) {
 		for _, tc := range msg.ToolCalls {
 			// Print muted tool call indicator.
 			extra := ""
-			if cmdVal, ok := tc.Function.Arguments.Get("command"); ok {
+			if cmdVal, ok := tc.Function.Arguments["command"]; ok {
 				extra = fmt.Sprintf(" %v", cmdVal)
 			}
 			fmt.Fprintf(r.rl.Stdout(), "\n%s\n", render.FormatToolCall(tc.Function.Name, extra))
