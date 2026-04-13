@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Provider Support
 status: unknown
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-04-13T06:37:14.173Z"
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-04-13T06:37:55.974Z"
 last_activity: 2026-04-13
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -57,6 +57,7 @@ Plan: 2 of 2
 | Phase 11-model-routing P01 | 3min | 2 tasks | 7 files |
 | Phase 11-model-routing P02 | 2min | 2 tasks | 3 files |
 | Phase 12-multi-provider-integration-polish P01 | 3min | 2 tasks | 2 files |
+| Phase 12-02 P02 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,8 @@ Recent decisions affecting current work:
 - [Phase 11-model-routing]: providerHeaderStyle reuses muted gray (#6B7089) from toolCallStyle for visual consistency
 - [Phase 11-model-routing]: Single-provider fallback preserved as handleModelListSingle when no registry available
 - [Phase 12-multi-provider-integration-polish]: Buffer-and-drain thinkParser instead of byte-by-byte: accumulate chunk into buffer, scan for complete tags, flush safe prefix
+- [Phase 12-02]: currentProvider() method resolves provider from registry on each REPL message for immediate hot-reload
+- [Phase 12-02]: Per-provider default_model stored in registry via RegisterWithDefault, consulted in --model and /model fallback
 
 ### Pending Todos
 
@@ -112,5 +115,5 @@ None yet.
 ## Session Continuity
 
 Last activity: 2026-04-13
-Stopped at: Completed 12-01-PLAN.md
+Stopped at: Completed 12-02-PLAN.md
 Resume file: None

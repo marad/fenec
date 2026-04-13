@@ -22,14 +22,14 @@ Requirements for multi-provider support. Each maps to roadmap phases.
 
 ### Configuration
 
-- [ ] **CONF-01**: User can define providers in a TOML config file with name, type, URL, and API key
+- [x] **CONF-01**: User can define providers in a TOML config file with name, type, URL, and API key
 - [x] **CONF-02**: User can reference environment variables for API keys in config (e.g., `$OPENAI_API_KEY`)
 - [x] **CONF-03**: User can run Fenec with no config file and get the default Ollama provider automatically
-- [ ] **CONF-04**: User can modify provider config and have changes take effect without restarting Fenec
+- [x] **CONF-04**: User can modify provider config and have changes take effect without restarting Fenec
 
 ### Model Routing
 
-- [ ] **ROUT-01**: User can select a model with `--model provider/model` to target a specific provider
+- [x] **ROUT-01**: User can select a model with `--model provider/model` to target a specific provider
 - [x] **ROUT-02**: User can use `--model modelname` (no prefix) to use the default provider
 - [x] **ROUT-03**: User can list available models grouped by provider via `/model`
 - [x] **ROUT-04**: User can discover models from each provider automatically (fetched from provider APIs)
@@ -68,11 +68,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OAIC-02 | Phase 10 / Phase 12 (gap closure) | Complete |
 | OAIC-03 | Phase 10 | Complete |
 | OAIC-04 | Phase 10 | Complete |
-| CONF-01 | Phase 9 / Phase 12 (gap closure) | Pending |
+| CONF-01 | Phase 9 / Phase 12 (gap closure) | Complete |
 | CONF-02 | Phase 9 | Complete |
 | CONF-03 | Phase 9 | Complete |
-| CONF-04 | Phase 9 / Phase 12 (gap closure) | Pending |
-| ROUT-01 | Phase 11 / Phase 12 (gap closure) | Pending |
+| CONF-04 | Phase 9 / Phase 12 (gap closure) | Complete |
+| ROUT-01 | Phase 11 / Phase 12 (gap closure) | Complete |
 | ROUT-02 | Phase 11 | Complete |
 | ROUT-03 | Phase 11 | Complete |
 | ROUT-04 | Phase 11 | Complete |
