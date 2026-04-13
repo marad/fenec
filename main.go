@@ -14,6 +14,7 @@ import (
 	"github.com/marad/fenec/internal/chat"
 	"github.com/marad/fenec/internal/config"
 	feneclua "github.com/marad/fenec/internal/lua"
+	"github.com/marad/fenec/internal/provider"
 	"github.com/marad/fenec/internal/render"
 	"github.com/marad/fenec/internal/repl"
 	"github.com/marad/fenec/internal/session"
@@ -84,6 +85,33 @@ Flags:
 		providerRegistry.Register(name, p)
 	}
 	providerRegistry.SetDefault(cfg.DefaultProvider)
+
+	// Start config file watcher for hot-reload (CONF-04).
+	configWatcher, err := config.NewConfigWatcher(configPath, func() {
+		newCfg, err := config.LoadConfig(configPath)
+		if err != nil {
+			slog.Error("config reload failed, keeping old config", "error", err)
+			return
+		}
+		// Rebuild all providers from new config.
+		newProviders := make(map[string]provider.Provider)
+		for name, pc := range newCfg.Providers {
+			newP, createErr := config.CreateProvider(name, pc)
+			if createErr != nil {
+				slog.Error("failed to create provider on reload", "name", name, "error", createErr)
+				continue
+			}
+			newProviders[name] = newP
+		}
+		providerRegistry.Update(newProviders, newCfg.DefaultProvider)
+		slog.Info("config reloaded", "providers", len(newProviders))
+	})
+	if err != nil {
+		// Non-fatal: hot-reload is a convenience, not critical.
+		slog.Warn("config watcher failed to start, hot-reload disabled", "error", err)
+	} else {
+		defer configWatcher.Stop()
+	}
 
 	// Get default provider.
 	p, err := providerRegistry.Default()
