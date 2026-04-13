@@ -73,7 +73,7 @@ Plans:
 
 Plans:
 - [x] 09-01-PLAN.md -- TOML config loading, env var resolution, provider registry, and config-driven main.go
-- [ ] 09-02-PLAN.md -- Config file watcher with fsnotify for hot-reload without restart
+- [x] 09-02-PLAN.md -- Config file watcher with fsnotify for hot-reload without restart
 
 ### Phase 10: OpenAI-Compatible Client
 **Goal**: Users can chat and use tools with any OpenAI-compatible provider (LM Studio, OpenAI cloud, etc.) alongside the existing Ollama provider
