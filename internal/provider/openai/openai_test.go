@@ -782,3 +782,195 @@ func TestStreamChatWithToolsUsesNonStreaming(t *testing.T) {
 	assert.True(t, nonStreamingCalled, "non-streaming path should be used when tools present")
 }
 
+// --- Streaming thinking delivery tests ---
+
+func TestStreamChatStreamingThinkingDelivery(t *testing.T) {
+	mc := &mockCompletions{
+		newStreamFunc: func(_ context.Context, _ sdkoai.ChatCompletionNewParams, _ ...option.RequestOption) *ssestream.Stream[sdkoai.ChatCompletionChunk] {
+			return streamWith(chunk("<think>I'm reasoning</think>Here is the answer"))
+		},
+	}
+	p := newWithAPI(mc, &mockModels{})
+
+	req := &provider.ChatRequest{
+		Model:    "test",
+		Messages: []model.Message{{Role: "user", Content: "Hi"}},
+	}
+
+	var thinkingTokens []string
+	var contentTokens []string
+	msg, _, err := p.StreamChat(context.Background(), req, func(tok string) {
+		contentTokens = append(contentTokens, tok)
+	}, func(tok string) {
+		thinkingTokens = append(thinkingTokens, tok)
+	})
+	require.NoError(t, err)
+
+	// onThinking must have been called with reasoning content
+	assert.NotEmpty(t, thinkingTokens, "onThinking should have been called")
+	combinedThinking := ""
+	for _, t := range thinkingTokens {
+		combinedThinking += t
+	}
+	assert.Equal(t, "I'm reasoning", combinedThinking)
+
+	// onToken must have been called with content (not thinking)
+	assert.NotEmpty(t, contentTokens, "onToken should have been called")
+	combinedContent := ""
+	for _, t := range contentTokens {
+		combinedContent += t
+	}
+	assert.Equal(t, "Here is the answer", combinedContent)
+
+	// Final message fields
+	assert.Equal(t, "I'm reasoning", msg.Thinking)
+	assert.Equal(t, "Here is the answer", msg.Content)
+}
+
+func TestStreamChatStreamingThinkingSplitAcrossChunks(t *testing.T) {
+	mc := &mockCompletions{
+		newStreamFunc: func(_ context.Context, _ sdkoai.ChatCompletionNewParams, _ ...option.RequestOption) *ssestream.Stream[sdkoai.ChatCompletionChunk] {
+			return streamWith(chunk("<think>reason"), chunk("ing</think>response"))
+		},
+	}
+	p := newWithAPI(mc, &mockModels{})
+
+	req := &provider.ChatRequest{
+		Model:    "test",
+		Messages: []model.Message{{Role: "user", Content: "Hi"}},
+	}
+
+	var thinkingTokens []string
+	var contentTokens []string
+	msg, _, err := p.StreamChat(context.Background(), req, func(tok string) {
+		contentTokens = append(contentTokens, tok)
+	}, func(tok string) {
+		thinkingTokens = append(thinkingTokens, tok)
+	})
+	require.NoError(t, err)
+
+	// onThinking should receive concatenated thinking content
+	combinedThinking := ""
+	for _, t := range thinkingTokens {
+		combinedThinking += t
+	}
+	assert.Equal(t, "reasoning", combinedThinking)
+
+	// onToken should receive content after </think>
+	combinedContent := ""
+	for _, t := range contentTokens {
+		combinedContent += t
+	}
+	assert.Equal(t, "response", combinedContent)
+
+	// Final message fields
+	assert.Equal(t, "reasoning", msg.Thinking)
+	assert.Equal(t, "response", msg.Content)
+}
+
+func TestStreamChatStreamingThinkingOnlyNoContent(t *testing.T) {
+	mc := &mockCompletions{
+		newStreamFunc: func(_ context.Context, _ sdkoai.ChatCompletionNewParams, _ ...option.RequestOption) *ssestream.Stream[sdkoai.ChatCompletionChunk] {
+			return streamWith(chunk("<think>just thinking</think>"))
+		},
+	}
+	p := newWithAPI(mc, &mockModels{})
+
+	req := &provider.ChatRequest{
+		Model:    "test",
+		Messages: []model.Message{{Role: "user", Content: "Hi"}},
+	}
+
+	var thinkingTokens []string
+	var contentTokens []string
+	msg, _, err := p.StreamChat(context.Background(), req, func(tok string) {
+		contentTokens = append(contentTokens, tok)
+	}, func(tok string) {
+		thinkingTokens = append(thinkingTokens, tok)
+	})
+	require.NoError(t, err)
+
+	// onThinking called
+	combinedThinking := ""
+	for _, t := range thinkingTokens {
+		combinedThinking += t
+	}
+	assert.Equal(t, "just thinking", combinedThinking)
+
+	// onToken never called (no content after think tags)
+	assert.Empty(t, contentTokens, "onToken should not have been called")
+
+	// Final message fields
+	assert.Equal(t, "just thinking", msg.Thinking)
+	assert.Equal(t, "", msg.Content)
+}
+
+func TestStreamChatStreamingThinkingNilCallback(t *testing.T) {
+	mc := &mockCompletions{
+		newStreamFunc: func(_ context.Context, _ sdkoai.ChatCompletionNewParams, _ ...option.RequestOption) *ssestream.Stream[sdkoai.ChatCompletionChunk] {
+			return streamWith(chunk("<think>reasoning</think>content here"))
+		},
+	}
+	p := newWithAPI(mc, &mockModels{})
+
+	req := &provider.ChatRequest{
+		Model:    "test",
+		Messages: []model.Message{{Role: "user", Content: "Hi"}},
+	}
+
+	var contentTokens []string
+	// Pass nil for onThinking -- must not panic
+	msg, _, err := p.StreamChat(context.Background(), req, func(tok string) {
+		contentTokens = append(contentTokens, tok)
+	}, nil)
+	require.NoError(t, err)
+
+	// msg.Thinking should still be populated even with nil callback
+	assert.Equal(t, "reasoning", msg.Thinking)
+
+	// onToken still receives content
+	combinedContent := ""
+	for _, t := range contentTokens {
+		combinedContent += t
+	}
+	assert.Equal(t, "content here", combinedContent)
+	assert.Equal(t, "content here", msg.Content)
+}
+
+func TestStreamChatStreamingNoThinkTags(t *testing.T) {
+	mc := &mockCompletions{
+		newStreamFunc: func(_ context.Context, _ sdkoai.ChatCompletionNewParams, _ ...option.RequestOption) *ssestream.Stream[sdkoai.ChatCompletionChunk] {
+			return streamWith(chunk("plain content"))
+		},
+	}
+	p := newWithAPI(mc, &mockModels{})
+
+	req := &provider.ChatRequest{
+		Model:    "test",
+		Messages: []model.Message{{Role: "user", Content: "Hi"}},
+	}
+
+	var thinkingTokens []string
+	var contentTokens []string
+	msg, _, err := p.StreamChat(context.Background(), req, func(tok string) {
+		contentTokens = append(contentTokens, tok)
+	}, func(tok string) {
+		thinkingTokens = append(thinkingTokens, tok)
+	})
+	require.NoError(t, err)
+
+	// onThinking never called
+	assert.Empty(t, thinkingTokens, "onThinking should not have been called")
+
+	// onToken called with plain content
+	combinedContent := ""
+	for _, t := range contentTokens {
+		combinedContent += t
+	}
+	assert.Equal(t, "plain content", combinedContent)
+
+	// Final message fields
+	assert.Equal(t, "", msg.Thinking)
+	assert.Equal(t, "plain content", msg.Content)
+}
+
