@@ -37,10 +37,12 @@ An extensible AI agent platform that can grow its own capabilities through self-
 - ✓ Provider abstraction with Ollama adapter — v1.1 Phase 8
 - ✓ Config-driven provider definitions with TOML + hot-reload — v1.1 Phase 9
 - ✓ OpenAI-compatible API client with tool calling (LM Studio, OpenAI cloud) — v1.1 Phase 10
+- ✓ Unified `--model provider/model` selection with provider routing — v1.1 Phase 11
+- ✓ Model discovery from providers (grouped `/model` listing) — v1.1 Phase 11
 
 ### Active
-- [ ] Unified `--model provider/model` selection with provider routing
-- [ ] Model discovery from providers
+
+(None — v1.1 milestone complete)
 
 ### Out of Scope
 
@@ -95,4 +97,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-13 after Phase 10 completion*
+*Last updated: 2026-04-13 after Phase 11 completion (v1.1 milestone complete)*
