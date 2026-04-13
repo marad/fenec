@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 Fenec Platform Foundation** -- Phases 1-6 (shipped 2026-04-12)
-- **v1.1 Multi-Provider Support** -- Phases 7-11 (in progress)
+- **v1.1 Multi-Provider Support** -- Phases 7-12 (in progress)
 
 ## Phases
 
@@ -116,15 +116,16 @@ Plans:
   2. Per-provider `default_model` in config.toml is consulted when user specifies `--model provider/` without a model part, or via provider switch without model
   3. Config hot-reload refreshes the REPL's active provider instance so URL/API key changes take effect mid-session without requiring `/model` or restart
   4. All 15 milestone requirements move from partial to satisfied in re-audit
-**Plans:** TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 12-01: TBD
+- [ ] 12-01-PLAN.md -- OpenAI streaming thinking delivery via incremental think-tag parsing
+- [ ] 12-02-PLAN.md -- Per-provider default_model wiring and REPL hot-reload provider refresh
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
+Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11 -> 12
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -139,4 +140,4 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
 | 9. Configuration | v1.1 | 0/2 | Planning complete | - |
 | 10. OpenAI-Compatible Client | v1.1 | 2/2 | Complete    | 2026-04-13 |
 | 11. Model Routing | v1.1 | 2/2 | Complete    | 2026-04-13 |
-| 12. Multi-Provider Integration Polish | v1.1 | 0/0 | Not started | - |
+| 12. Multi-Provider Integration Polish | v1.1 | 0/2 | Planning complete | - |
