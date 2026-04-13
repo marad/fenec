@@ -38,6 +38,12 @@ func (ct *ContextTracker) Available() int {
 	return ct.maxTokens
 }
 
+// Reset updates the maximum context window size. Used when switching to a
+// model/provider with a different context length.
+func (ct *ContextTracker) Reset(maxTokens int) {
+	ct.maxTokens = maxTokens
+}
+
 // Threshold returns the configured truncation threshold.
 func (ct *ContextTracker) Threshold() float64 {
 	return ct.threshold

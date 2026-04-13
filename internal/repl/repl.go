@@ -25,24 +25,26 @@ import (
 
 // REPL manages the interactive chat loop.
 type REPL struct {
-	provider  provider.Provider
-	conv      *chat.Conversation
-	rl        *readline.Instance
-	mu        sync.Mutex         // Protects streaming state
-	streaming bool               // True while streaming a response
-	cancelFn  context.CancelFunc // For cancelling active generation via Ctrl+C
-	sigCh     chan os.Signal      // SIGINT channel for cleanup
-	tracker   *chat.ContextTracker // Context window tracking
-	store     *session.Store       // Session persistence
-	session   *session.Session     // Current session
-	autoSaved sync.Once            // Ensures auto-save runs only once
-	registry        *tool.Registry // Tool registry for agentic loop
-	baseSystemPrompt string        // System prompt before tool descriptions (for refresh)
-	debug           bool           // Show tool results when true
+	provider         provider.Provider
+	conv             *chat.Conversation
+	rl               *readline.Instance
+	mu               sync.Mutex         // Protects streaming state
+	streaming        bool               // True while streaming a response
+	cancelFn         context.CancelFunc // For cancelling active generation via Ctrl+C
+	sigCh            chan os.Signal      // SIGINT channel for cleanup
+	tracker          *chat.ContextTracker // Context window tracking
+	store            *session.Store       // Session persistence
+	session          *session.Session     // Current session
+	autoSaved        sync.Once            // Ensures auto-save runs only once
+	registry         *tool.Registry       // Tool registry for agentic loop
+	baseSystemPrompt string               // System prompt before tool descriptions (for refresh)
+	debug            bool                 // Show tool results when true
+	providerRegistry *config.ProviderRegistry // Provider registry for model/provider switching
+	activeProvider   string               // Current provider name (e.g., "ollama")
 }
 
 // NewREPL creates a REPL connected to the given chat service.
-func NewREPL(p provider.Provider, model string, systemPrompt string, tracker *chat.ContextTracker, store *session.Store, registry *tool.Registry) (*REPL, error) {
+func NewREPL(p provider.Provider, model string, activeProvider string, systemPrompt string, tracker *chat.ContextTracker, store *session.Store, toolRegistry *tool.Registry, providerRegistry *config.ProviderRegistry) (*REPL, error) {
 	historyFile, err := config.HistoryFile()
 	if err != nil {
 		// Non-fatal: proceed without history.
@@ -64,8 +66,8 @@ func NewREPL(p provider.Provider, model string, systemPrompt string, tracker *ch
 	basePrompt := systemPrompt
 
 	// Append tool descriptions to system prompt so the model knows what tools are available.
-	if registry != nil {
-		toolDesc := registry.Describe()
+	if toolRegistry != nil {
+		toolDesc := toolRegistry.Describe()
 		if toolDesc != "" {
 			systemPrompt = systemPrompt + "\n\n## Available Tools\n\n" + toolDesc
 		}
@@ -88,8 +90,10 @@ func NewREPL(p provider.Provider, model string, systemPrompt string, tracker *ch
 		tracker:          tracker,
 		store:            store,
 		session:          sess,
-		registry:         registry,
+		registry:         toolRegistry,
 		baseSystemPrompt: basePrompt,
+		providerRegistry: providerRegistry,
+		activeProvider:   activeProvider,
 	}
 
 	// Ctrl+C / SIGINT handling (per D-04).
@@ -152,7 +156,7 @@ func (r *REPL) Run() error {
 			case "/help":
 				fmt.Fprintln(r.rl.Stdout(), helpText)
 			case "/model":
-				r.handleModelCommand()
+				r.handleModelCommand(cmd.Args)
 			case "/save":
 				r.handleSaveCommand()
 			case "/load":
@@ -501,8 +505,70 @@ func (r *REPL) ApproveCommand(command string) bool {
 	return response == "y" || response == "yes"
 }
 
-// handleModelCommand implements the /model interactive selection (per D-09, D-10).
-func (r *REPL) handleModelCommand() {
+// handleModelCommand implements model switching with provider routing.
+// Supports: /model (list), /model name (same provider), /model provider/name (switch provider).
+func (r *REPL) handleModelCommand(args []string) {
+	if len(args) == 0 {
+		// No arguments: fall back to interactive model listing from current provider.
+		r.handleModelList()
+		return
+	}
+
+	modelArg := args[0]
+	ctx := context.Background()
+
+	if strings.Contains(modelArg, "/") {
+		// provider/model syntax: switch both provider and model.
+		parts := strings.SplitN(modelArg, "/", 2)
+		providerName, modelName := parts[0], parts[1]
+
+		if r.providerRegistry == nil {
+			fmt.Fprintln(r.rl.Stdout(), render.FormatError("No provider registry available."))
+			return
+		}
+
+		newProvider, ok := r.providerRegistry.Get(providerName)
+		if !ok {
+			fmt.Fprintf(r.rl.Stdout(), "Unknown provider: %s. Available: %s\n",
+				providerName, strings.Join(r.providerRegistry.Names(), ", "))
+			return
+		}
+
+		r.provider = newProvider
+		r.activeProvider = providerName
+		r.conv.SetModel(modelName)
+
+		// Update context length from new provider.
+		ctxLen, err := newProvider.GetContextLength(ctx, modelName)
+		if err == nil && ctxLen > 0 {
+			r.conv.ContextLength = ctxLen
+			if r.tracker != nil {
+				r.tracker.Reset(ctxLen)
+			}
+		}
+
+		r.rl.SetPrompt(render.FormatPrompt(modelName))
+		fmt.Fprintf(r.rl.Stdout(), "Switched to %s/%s\n", providerName, modelName)
+	} else {
+		// No prefix: switch model within current provider.
+		r.conv.SetModel(modelArg)
+
+		// Update context length from current provider.
+		ctxLen, err := r.provider.GetContextLength(ctx, modelArg)
+		if err == nil && ctxLen > 0 {
+			r.conv.ContextLength = ctxLen
+			if r.tracker != nil {
+				r.tracker.Reset(ctxLen)
+			}
+		}
+
+		r.rl.SetPrompt(render.FormatPrompt(modelArg))
+		fmt.Fprintf(r.rl.Stdout(), "Switched to %s\n", modelArg)
+	}
+}
+
+// handleModelList shows the interactive model selection list from the current provider.
+func (r *REPL) handleModelList() {
 	ctx := context.Background()
 	models, err := r.provider.ListModels(ctx)
 	if err != nil {

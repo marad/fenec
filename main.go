@@ -283,7 +283,7 @@ Flags:
 	}
 
 	// Create and run REPL.
-	r, err := repl.NewREPL(p, defaultModel, systemPrompt, tracker, store, toolRegistry)
+	r, err := repl.NewREPL(p, defaultModel, activeProviderName, systemPrompt, tracker, store, toolRegistry, providerRegistry)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, render.FormatError(
 			fmt.Sprintf("Failed to start REPL: %v", err)))

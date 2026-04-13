@@ -102,6 +102,31 @@ func TestHelpTextContainsNewCommands(t *testing.T) {
 	assert.Contains(t, helpText, "/history")
 }
 
+func TestParseCommandModelWithProvider(t *testing.T) {
+	cmd := ParseCommand("/model ollama/gemma4")
+	require.NotNil(t, cmd)
+	assert.Equal(t, "/model", cmd.Name)
+	assert.Equal(t, []string{"ollama/gemma4"}, cmd.Args)
+}
+
+func TestParseCommandModelBare(t *testing.T) {
+	cmd := ParseCommand("/model gemma4")
+	require.NotNil(t, cmd)
+	assert.Equal(t, "/model", cmd.Name)
+	assert.Equal(t, []string{"gemma4"}, cmd.Args)
+}
+
+func TestParseCommandModelNoArgs(t *testing.T) {
+	cmd := ParseCommand("/model")
+	require.NotNil(t, cmd)
+	assert.Equal(t, "/model", cmd.Name)
+	assert.Nil(t, cmd.Args)
+}
+
+func TestHelpTextContainsProviderModelSyntax(t *testing.T) {
+	assert.Contains(t, helpText, "provider/")
+}
+
 func TestAutoSaveCalledOnce(t *testing.T) {
 	// Create a temp directory for the session store.
 	dir := t.TempDir()
