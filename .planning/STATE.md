@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Provider Support
 status: unknown
-stopped_at: Completed 11-02-PLAN.md
-last_updated: "2026-04-13T06:17:52.651Z"
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-04-13T06:37:14.173Z"
 last_activity: 2026-04-13
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 5
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 11
+  completed_plans: 10
 ---
 
 # Project State
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
-**Current focus:** Phase 11 — model-routing
+**Current focus:** Phase 12 — multi-provider-integration-polish
 
 ## Current Position
 
-Phase: 11
-Plan: Not started
+Phase: 12 (multi-provider-integration-polish) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Plan: Not started
 | Phase 10-openai-compatible-client P02 | 5min | 2 tasks | 2 files |
 | Phase 11-model-routing P01 | 3min | 2 tasks | 7 files |
 | Phase 11-model-routing P02 | 2min | 2 tasks | 3 files |
+| Phase 12-multi-provider-integration-polish P01 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,7 @@ Recent decisions affecting current work:
 - [Phase 11-model-routing]: handleModelCommand refactored to accept args with interactive list as fallback
 - [Phase 11-model-routing]: providerHeaderStyle reuses muted gray (#6B7089) from toolCallStyle for visual consistency
 - [Phase 11-model-routing]: Single-provider fallback preserved as handleModelListSingle when no registry available
+- [Phase 12-multi-provider-integration-polish]: Buffer-and-drain thinkParser instead of byte-by-byte: accumulate chunk into buffer, scan for complete tags, flush safe prefix
 
 ### Pending Todos
 
@@ -110,5 +112,5 @@ None yet.
 ## Session Continuity
 
 Last activity: 2026-04-13
-Stopped at: Completed 11-02-PLAN.md
+Stopped at: Completed 12-01-PLAN.md
 Resume file: None

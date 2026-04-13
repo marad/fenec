@@ -15,8 +15,8 @@ Requirements for multi-provider support. Each maps to roadmap phases.
 
 ### OpenAI-Compatible Support
 
-- [ ] **OAIC-01**: User can chat with models served by LM Studio via the OpenAI-compatible protocol
-- [ ] **OAIC-02**: User can chat with OpenAI cloud models (GPT-4o, etc.) via the OpenAI API
+- [x] **OAIC-01**: User can chat with models served by LM Studio via the OpenAI-compatible protocol
+- [x] **OAIC-02**: User can chat with OpenAI cloud models (GPT-4o, etc.) via the OpenAI API
 - [x] **OAIC-03**: User can use tool calling with OpenAI-compatible providers (non-streaming when tools present)
 - [x] **OAIC-04**: User can switch providers mid-session and continue the conversation
 
@@ -64,8 +64,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROV-01 | Phase 8 | Complete |
 | PROV-02 | Phase 8 | Complete |
 | PROV-03 | Phase 7 | Complete |
-| OAIC-01 | Phase 10 / Phase 12 (gap closure) | Pending |
-| OAIC-02 | Phase 10 / Phase 12 (gap closure) | Pending |
+| OAIC-01 | Phase 10 / Phase 12 (gap closure) | Complete |
+| OAIC-02 | Phase 10 / Phase 12 (gap closure) | Complete |
 | OAIC-03 | Phase 10 | Complete |
 | OAIC-04 | Phase 10 | Complete |
 | CONF-01 | Phase 9 / Phase 12 (gap closure) | Pending |
