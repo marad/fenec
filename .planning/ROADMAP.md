@@ -29,7 +29,7 @@ See `.planning/milestones/v1.0-ROADMAP.md` for full phase details.
 - [ ] **Phase 8: Provider Abstraction** - Define Provider interface and validate it with Ollama adapter
 - [ ] **Phase 9: Configuration** - Config-driven provider definitions with TOML file and zero-config default
 - [x] **Phase 10: OpenAI-Compatible Client** - OpenAI-protocol adapter for LM Studio, OpenAI, and compatible backends (completed 2026-04-13)
-- [ ] **Phase 11: Model Routing** - Unified model selection with `--model provider/model` syntax and model discovery
+- [x] **Phase 11: Model Routing** - Unified model selection with `--model provider/model` syntax and model discovery (completed 2026-04-13)
 
 ## Phase Details
 
@@ -99,11 +99,11 @@ Plans:
   2. User can run `fenec --model gemma4` (no prefix) and have it routed to the default provider
   3. User can type `/model` in the REPL and see available models grouped by provider
   4. Models are discovered automatically from each provider's API (Ollama list, OpenAI models endpoint)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 11-01-PLAN.md -- Registry routing, --model provider/model CLI flag, and /model REPL switching
-- [ ] 11-02-PLAN.md -- Parallel model discovery and /model grouped listing display
+- [x] 11-02-PLAN.md -- Parallel model discovery and /model grouped listing display
 
 ## Progress
 
@@ -122,4 +122,4 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
 | 8. Provider Abstraction | v1.1 | 0/1 | Planning complete | - |
 | 9. Configuration | v1.1 | 0/2 | Planning complete | - |
 | 10. OpenAI-Compatible Client | v1.1 | 2/2 | Complete    | 2026-04-13 |
-| 11. Model Routing | v1.1 | 1/2 | In Progress|  |
+| 11. Model Routing | v1.1 | 2/2 | Complete   | 2026-04-13 |
