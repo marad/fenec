@@ -121,5 +121,5 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
 | 7. Canonical Types | v1.1 | 0/2 | Planning complete | - |
 | 8. Provider Abstraction | v1.1 | 0/1 | Planning complete | - |
 | 9. Configuration | v1.1 | 0/2 | Planning complete | - |
-| 10. OpenAI-Compatible Client | v1.1 | 2/2 | Complete   | 2026-04-13 |
+| 10. OpenAI-Compatible Client | v1.1 | 2/2 | Complete    | 2026-04-13 |
 | 11. Model Routing | v1.1 | 0/0 | Not started | - |
