@@ -567,8 +567,78 @@ func (r *REPL) handleModelCommand(args []string) {
 	}
 }
 
-// handleModelList shows the interactive model selection list from the current provider.
+// providerModels holds the result of querying a single provider for its models.
+type providerModels struct {
+	name   string
+	models []string
+	err    error
+}
+
+// handleModelList shows models from all configured providers, grouped by provider.
+// Each provider is queried in parallel with a 5-second timeout.
 func (r *REPL) handleModelList() {
+	if r.providerRegistry == nil {
+		// Fallback: single-provider listing.
+		r.handleModelListSingle()
+		return
+	}
+
+	names := r.providerRegistry.Names()
+	if len(names) == 0 {
+		fmt.Fprintln(r.rl.Stdout(), render.FormatError("No providers configured."))
+		return
+	}
+
+	// Query all providers in parallel with a shared timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	results := make([]providerModels, len(names))
+	var wg sync.WaitGroup
+
+	for i, name := range names {
+		results[i].name = name
+		p, ok := r.providerRegistry.Get(name)
+		if !ok {
+			results[i].err = fmt.Errorf("not found in registry")
+			continue
+		}
+
+		wg.Add(1)
+		go func(idx int, prov provider.Provider) {
+			defer wg.Done()
+			models, err := prov.ListModels(ctx)
+			results[idx].models = models
+			results[idx].err = err
+		}(i, p)
+	}
+
+	wg.Wait()
+
+	// Display results grouped by provider.
+	for i, res := range results {
+		fmt.Fprintln(r.rl.Stdout(), render.FormatProviderHeader(res.name))
+
+		if res.err != nil {
+			fmt.Fprintln(r.rl.Stdout(), render.FormatProviderError(res.name, res.err.Error()))
+		} else if len(res.models) == 0 {
+			fmt.Fprintln(r.rl.Stdout(), "  (no models)")
+		} else {
+			for _, m := range res.models {
+				isActive := res.name == r.activeProvider && m == r.conv.Model
+				fmt.Fprintln(r.rl.Stdout(), render.FormatModelEntry(m, isActive))
+			}
+		}
+
+		// Blank line between providers for spacing.
+		if i < len(results)-1 {
+			fmt.Fprintln(r.rl.Stdout())
+		}
+	}
+}
+
+// handleModelListSingle is the fallback for single-provider mode (no registry).
+func (r *REPL) handleModelListSingle() {
 	ctx := context.Background()
 	models, err := r.provider.ListModels(ctx)
 	if err != nil {
