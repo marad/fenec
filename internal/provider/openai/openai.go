@@ -119,34 +119,166 @@ func (p *Provider) StreamChat(ctx context.Context, req *provider.ChatRequest, on
 	return p.chatStreaming(ctx, req, onToken, onThinking)
 }
 
+// thinkParser is a state machine that incrementally separates <think>...</think>
+// blocks from content as streaming chunks arrive. Thinking content is routed to
+// onThinking, everything else to onToken. Both callbacks are optional (nil-safe).
+type thinkParser struct {
+	inThink  bool            // currently inside <think> block
+	buf      strings.Builder // carries partial tag text across chunk boundaries
+	thinking strings.Builder // accumulated thinking content
+	content  strings.Builder // accumulated non-thinking content
+
+	onToken    func(string)
+	onThinking func(string)
+}
+
+// openTag and closeTag are the delimiters for thinking blocks.
+const openTag = "<think>"
+const closeTag = "</think>"
+
+// process feeds a chunk of streaming content through the parser.
+// It appends the chunk to an internal buffer, then drains as much as possible,
+// leaving only a potential partial tag match at the end of the buffer.
+func (tp *thinkParser) process(s string) {
+	tp.buf.WriteString(s)
+	tp.drain()
+}
+
+// drain consumes the internal buffer, flushing content/thinking as tags are
+// found. After drain, buf contains only a possible partial tag suffix.
+func (tp *thinkParser) drain() {
+	for {
+		text := tp.buf.String()
+		if len(text) == 0 {
+			return
+		}
+
+		if tp.inThink {
+			// Look for closing </think> tag.
+			if idx := strings.Index(text, closeTag); idx >= 0 {
+				// Everything before the tag is thinking content.
+				before := text[:idx]
+				if before != "" {
+					tp.thinking.WriteString(before)
+					if tp.onThinking != nil {
+						tp.onThinking(before)
+					}
+				}
+				// Advance past the close tag and continue draining.
+				tp.buf.Reset()
+				tp.buf.WriteString(text[idx+len(closeTag):])
+				tp.inThink = false
+				continue
+			}
+			// No complete close tag found. Flush everything except a possible
+			// partial match of </think> at the tail.
+			safe := tp.safePrefixLen(text, closeTag)
+			if safe > 0 {
+				chunk := text[:safe]
+				tp.thinking.WriteString(chunk)
+				if tp.onThinking != nil {
+					tp.onThinking(chunk)
+				}
+				tp.buf.Reset()
+				tp.buf.WriteString(text[safe:])
+			}
+			return
+		}
+
+		// Not in think mode: look for opening <think> tag.
+		if idx := strings.Index(text, openTag); idx >= 0 {
+			before := text[:idx]
+			if before != "" {
+				tp.content.WriteString(before)
+				if tp.onToken != nil {
+					tp.onToken(before)
+				}
+			}
+			tp.buf.Reset()
+			tp.buf.WriteString(text[idx+len(openTag):])
+			tp.inThink = true
+			continue
+		}
+		// No complete open tag found. Flush safe prefix.
+		safe := tp.safePrefixLen(text, openTag)
+		if safe > 0 {
+			chunk := text[:safe]
+			tp.content.WriteString(chunk)
+			if tp.onToken != nil {
+				tp.onToken(chunk)
+			}
+			tp.buf.Reset()
+			tp.buf.WriteString(text[safe:])
+		}
+		return
+	}
+}
+
+// safePrefixLen returns the number of bytes at the start of text that can be
+// safely flushed, leaving behind any suffix that could be the beginning of tag.
+// For example, if text is "abc<thi" and tag is "<think>", returns 3 (flush "abc",
+// keep "<thi" in buffer).
+func (tp *thinkParser) safePrefixLen(text, tag string) int {
+	// Find the longest suffix of text that is a proper prefix of tag.
+	maxK := len(tag) - 1
+	if maxK > len(text) {
+		maxK = len(text)
+	}
+	for k := maxK; k >= 1; k-- {
+		if strings.HasPrefix(tag, text[len(text)-k:]) {
+			return len(text) - k
+		}
+	}
+	return len(text)
+}
+
+// flush drains any remaining buffered content at end of stream.
+func (tp *thinkParser) flush() {
+	if tp.buf.Len() == 0 {
+		return
+	}
+	remaining := tp.buf.String()
+	tp.buf.Reset()
+	if tp.inThink {
+		tp.thinking.WriteString(remaining)
+		if tp.onThinking != nil {
+			tp.onThinking(remaining)
+		}
+	} else {
+		tp.content.WriteString(remaining)
+		if tp.onToken != nil {
+			tp.onToken(remaining)
+		}
+	}
+}
+
 // chatStreaming handles the streaming path for pure chat (no tools).
 func (p *Provider) chatStreaming(ctx context.Context, req *provider.ChatRequest, onToken func(string), onThinking func(string)) (*model.Message, *model.StreamMetrics, error) {
 	params := buildParams(req)
 	stream := p.completions.NewStreaming(ctx, params)
 	defer stream.Close()
 
-	var content strings.Builder
+	tp := &thinkParser{onToken: onToken, onThinking: onThinking}
 	for stream.Next() {
 		chunk := stream.Current()
 		if len(chunk.Choices) > 0 {
 			delta := chunk.Choices[0].Delta
 			if delta.Content != "" {
-				content.WriteString(delta.Content)
-				if onToken != nil {
-					onToken(delta.Content)
-				}
+				tp.process(delta.Content)
 			}
 		}
 	}
+	tp.flush()
+
 	if err := stream.Err(); err != nil {
 		return nil, nil, fmt.Errorf("openai streaming chat: %w", err)
 	}
 
 	msg := model.Message{
-		Role:    "assistant",
-		Content: content.String(),
+		Role:     "assistant",
+		Content:  tp.content.String(),
+		Thinking: strings.TrimSpace(tp.thinking.String()),
 	}
-	extractThinkingFromContent(&msg)
 
 	return &msg, &model.StreamMetrics{}, nil
 }
