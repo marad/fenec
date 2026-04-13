@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	pflag "github.com/spf13/pflag"
@@ -13,7 +14,6 @@ import (
 	"github.com/marad/fenec/internal/chat"
 	"github.com/marad/fenec/internal/config"
 	feneclua "github.com/marad/fenec/internal/lua"
-	"github.com/marad/fenec/internal/provider/ollama"
 	"github.com/marad/fenec/internal/render"
 	"github.com/marad/fenec/internal/repl"
 	"github.com/marad/fenec/internal/session"
@@ -21,8 +21,7 @@ import (
 )
 
 func main() {
-	// Parse flags (per D-16: --host flag to override default).
-	host := pflag.StringP("host", "H", "", "Ollama server address (default: localhost:11434)")
+	// Parse flags.
 	modelName := pflag.StringP("model", "m", "", "Ollama model to use (default: first available)")
 	pipeMode := pflag.BoolP("pipe", "p", false, "Read all stdin as a single message and send to model")
 	debugMode := pflag.BoolP("debug", "d", false, "Show tool call results and other debug output")
@@ -59,26 +58,48 @@ Flags:
 		*pipeMode = true
 	}
 
-	// Determine host.
-	ollamaHost := config.DefaultHost
-	if *host != "" {
-		ollamaHost = *host
-	}
-
-	// Create Ollama provider.
-	p, err := ollama.New(ollamaHost)
+	// Load or create config file.
+	configDir, err := config.ConfigDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, render.FormatError(
-			fmt.Sprintf("Failed to create provider: %v", err)))
+			fmt.Sprintf("Failed to resolve config directory: %v", err)))
+		os.Exit(1)
+	}
+	configPath := filepath.Join(configDir, "config.toml")
+	cfg, err := config.LoadOrCreateConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, render.FormatError(
+			fmt.Sprintf("Failed to load config: %v", err)))
 		os.Exit(1)
 	}
 
-	// Health check (per D-14: if Ollama unreachable, show error with fix instructions and exit).
+	// Build provider registry from config.
+	providerRegistry := config.NewProviderRegistry()
+	for name, pc := range cfg.Providers {
+		p, err := config.CreateProvider(name, pc)
+		if err != nil {
+			slog.Error("failed to create provider", "name", name, "error", err)
+			continue
+		}
+		providerRegistry.Register(name, p)
+	}
+	providerRegistry.SetDefault(cfg.DefaultProvider)
+
+	// Get default provider.
+	p, err := providerRegistry.Default()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, render.FormatError(
+			fmt.Sprintf("No default provider available: %v", err)))
+		os.Exit(1)
+	}
+
+	// Health check: if the default provider is unreachable, show error with fix instructions and exit.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := p.Ping(ctx); err != nil {
+		providerURL := cfg.Providers[cfg.DefaultProvider].URL
 		fmt.Fprintln(os.Stderr, render.FormatError(
-			fmt.Sprintf("Cannot connect to Ollama at %s. Is it running? Start with: ollama serve\n\nDetails: %v", ollamaHost, err)))
+			fmt.Sprintf("Cannot connect to provider %q at %s. Is it running?\n\nDetails: %v", cfg.DefaultProvider, providerURL, err)))
 		os.Exit(1)
 	}
 
@@ -139,7 +160,7 @@ Flags:
 	store := session.NewStore(sessDir)
 
 	// Create tool registry with shell_exec tool.
-	registry := tool.NewRegistry()
+	toolRegistry := tool.NewRegistry()
 
 	// Create approval function that will be set after REPL creation.
 	// We need the REPL instance for readline access, so use a closure.
@@ -151,11 +172,11 @@ Flags:
 		}
 		return false
 	})
-	registry.Register(shellTool)
+	toolRegistry.Register(shellTool)
 
 	// Register file manipulation tools.
 	readTool := tool.NewReadFileTool()
-	registry.Register(readTool)
+	toolRegistry.Register(readTool)
 
 	writeTool := tool.NewWriteFileTool(func(desc string) bool {
 		if approver != nil {
@@ -163,7 +184,7 @@ Flags:
 		}
 		return false
 	})
-	registry.Register(writeTool)
+	toolRegistry.Register(writeTool)
 
 	editTool := tool.NewEditFileTool(func(desc string) bool {
 		if approver != nil {
@@ -171,10 +192,10 @@ Flags:
 		}
 		return false
 	})
-	registry.Register(editTool)
+	toolRegistry.Register(editTool)
 
 	listDirTool := tool.NewListDirTool()
-	registry.Register(listDirTool)
+	toolRegistry.Register(listDirTool)
 
 	// Load Lua tools from tools directory.
 	toolsDir, err := config.ToolsDir()
@@ -188,7 +209,7 @@ Flags:
 			// Non-fatal: continue without Lua tools.
 		} else {
 			for _, t := range result.Tools {
-				registry.RegisterLua(t)
+				toolRegistry.RegisterLua(t)
 			}
 			if len(result.Tools) > 0 {
 				slog.Info("loaded Lua tools", "count", len(result.Tools))
@@ -213,18 +234,18 @@ Flags:
 	// Register self-extension tools only when toolsDir is resolved.
 	// Without a valid tools directory, create/update/delete would write to CWD.
 	if toolsDir != "" {
-		createTool := tool.NewCreateLuaTool(toolsDir, registry, notifier)
-		registry.Register(createTool)
-		updateTool := tool.NewUpdateLuaTool(toolsDir, registry, notifier)
-		registry.Register(updateTool)
-		deleteTool := tool.NewDeleteLuaTool(toolsDir, registry, notifier)
-		registry.Register(deleteTool)
+		createTool := tool.NewCreateLuaTool(toolsDir, toolRegistry, notifier)
+		toolRegistry.Register(createTool)
+		updateTool := tool.NewUpdateLuaTool(toolsDir, toolRegistry, notifier)
+		toolRegistry.Register(updateTool)
+		deleteTool := tool.NewDeleteLuaTool(toolsDir, toolRegistry, notifier)
+		toolRegistry.Register(deleteTool)
 	} else {
 		slog.Warn("self-extension tools disabled: no tools directory available")
 	}
 
 	// Create and run REPL.
-	r, err := repl.NewREPL(p, defaultModel, systemPrompt, tracker, store, registry)
+	r, err := repl.NewREPL(p, defaultModel, systemPrompt, tracker, store, toolRegistry)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, render.FormatError(
 			fmt.Sprintf("Failed to start REPL: %v", err)))
