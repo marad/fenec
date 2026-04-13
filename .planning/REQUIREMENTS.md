@@ -22,9 +22,9 @@ Requirements for multi-provider support. Each maps to roadmap phases.
 
 ### Configuration
 
-- [ ] **CONF-01**: User can define providers in a TOML config file with name, type, URL, and API key
-- [ ] **CONF-02**: User can reference environment variables for API keys in config (e.g., `$OPENAI_API_KEY`)
-- [ ] **CONF-03**: User can run Fenec with no config file and get the default Ollama provider automatically
+- [x] **CONF-01**: User can define providers in a TOML config file with name, type, URL, and API key
+- [x] **CONF-02**: User can reference environment variables for API keys in config (e.g., `$OPENAI_API_KEY`)
+- [x] **CONF-03**: User can run Fenec with no config file and get the default Ollama provider automatically
 - [ ] **CONF-04**: User can modify provider config and have changes take effect without restarting Fenec
 
 ### Model Routing
@@ -68,9 +68,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OAIC-02 | Phase 10 | Pending |
 | OAIC-03 | Phase 10 | Pending |
 | OAIC-04 | Phase 10 | Pending |
-| CONF-01 | Phase 9 | Pending |
-| CONF-02 | Phase 9 | Pending |
-| CONF-03 | Phase 9 | Pending |
+| CONF-01 | Phase 9 | Complete |
+| CONF-02 | Phase 9 | Complete |
+| CONF-03 | Phase 9 | Complete |
 | CONF-04 | Phase 9 | Pending |
 | ROUT-01 | Phase 11 | Pending |
 | ROUT-02 | Phase 11 | Pending |

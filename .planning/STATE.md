@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Provider Support
 status: unknown
-stopped_at: Completed 08-01-PLAN.md (provider abstraction)
-last_updated: "2026-04-12T20:36:46.922Z"
-last_activity: 2026-04-12
+stopped_at: Completed 09-01-PLAN.md (TOML config + provider registry)
+last_updated: "2026-04-13T04:58:21.848Z"
+last_activity: 2026-04-13
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 5
+  completed_plans: 4
 ---
 
 # Project State
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
-**Current focus:** Phase 08 — provider-abstraction
+**Current focus:** Phase 09 — configuration
 
 ## Current Position
 
-Phase: 9
-Plan: Not started
+Phase: 09 (configuration) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Plan: Not started
 | Phase 07-canonical-types P01 | 2min | 1 tasks | 6 files |
 | Phase 07-canonical-types P02 | 10min | 2 tasks | 29 files |
 | Phase 08-provider-abstraction P01 | 5min | 3 tasks | 10 files |
+| Phase 09 P01 | 4min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Recent decisions affecting current work:
 - [Phase 07-canonical-types]: Conversion functions placed in stream.go as the adapter boundary between canonical types and ollama/api
 - [Phase 08-provider-abstraction]: Provider interface with 5 methods (Name, ListModels, Ping, StreamChat, GetContextLength) and ChatRequest type decoupled from Conversation
 - [Phase 08-provider-abstraction]: Only internal/provider/ollama imports ollama/api -- all other packages use provider.Provider interface
+- [Phase 09]: Used BurntSushi/toml v1.6.0 for TOML parsing per CLAUDE.md recommendation
+- [Phase 09]: ProviderRegistry in internal/config/ with RWMutex; factory imports specific provider packages
 
 ### Pending Todos
 
@@ -91,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last activity: 2026-04-12
-Stopped at: Completed 08-01-PLAN.md (provider abstraction)
+Last activity: 2026-04-13
+Stopped at: Completed 09-01-PLAN.md (TOML config + provider registry)
 Resume file: None
