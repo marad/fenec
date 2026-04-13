@@ -113,6 +113,18 @@ func NewREPL(p provider.Provider, model string, activeProvider string, systemPro
 	return r, nil
 }
 
+// currentProvider returns the active provider from the registry.
+// Falls back to the cached r.provider field if registry lookup fails
+// (e.g., provider removed during hot-reload).
+func (r *REPL) currentProvider() provider.Provider {
+	if r.providerRegistry != nil {
+		if p, ok := r.providerRegistry.Get(r.activeProvider); ok {
+			return p
+		}
+	}
+	return r.provider
+}
+
 // Run starts the interactive REPL loop. Blocks until exit.
 func (r *REPL) Run() error {
 	defer r.autoSave()
@@ -352,7 +364,7 @@ func (r *REPL) sendMessage(input string) {
 		}
 
 		// Stream the response.
-		msg, metrics, err := r.provider.StreamChat(ctx, req, func(token string) {
+		msg, metrics, err := r.currentProvider().StreamChat(ctx, req, func(token string) {
 			if !contentStarted {
 				contentStarted = true
 				sp.Stop()
@@ -456,7 +468,7 @@ func (r *REPL) sendMessage(input string) {
 		Think:         r.conv.Think,
 		ContextLength: r.conv.ContextLength,
 	}
-	msg, _, err := r.provider.StreamChat(ctx, summaryReq, func(token string) {
+	msg, _, err := r.currentProvider().StreamChat(ctx, summaryReq, func(token string) {
 		if !contentStarted2 {
 			contentStarted2 = true
 			sp2.Stop()
@@ -534,7 +546,17 @@ func (r *REPL) handleModelCommand(args []string) {
 			return
 		}
 
-		r.provider = newProvider
+		// If no model specified, use per-provider default.
+		if modelName == "" {
+			modelName = r.providerRegistry.DefaultModelFor(providerName)
+			if modelName == "" {
+				fmt.Fprintf(r.rl.Stdout(), "No default model for provider %s. Specify a model: /model %s/modelname\n",
+					providerName, providerName)
+				return
+			}
+		}
+
+		// Update active provider name -- currentProvider() will resolve from registry.
 		r.activeProvider = providerName
 		r.conv.SetModel(modelName)
 
@@ -554,7 +576,7 @@ func (r *REPL) handleModelCommand(args []string) {
 		r.conv.SetModel(modelArg)
 
 		// Update context length from current provider.
-		ctxLen, err := r.provider.GetContextLength(ctx, modelArg)
+		ctxLen, err := r.currentProvider().GetContextLength(ctx, modelArg)
 		if err == nil && ctxLen > 0 {
 			r.conv.ContextLength = ctxLen
 			if r.tracker != nil {
@@ -640,7 +662,7 @@ func (r *REPL) handleModelList() {
 // handleModelListSingle is the fallback for single-provider mode (no registry).
 func (r *REPL) handleModelListSingle() {
 	ctx := context.Background()
-	models, err := r.provider.ListModels(ctx)
+	models, err := r.currentProvider().ListModels(ctx)
 	if err != nil {
 		fmt.Fprintln(r.rl.Stdout(), render.FormatError(fmt.Sprintf("Failed to list models: %v", err)))
 		return

@@ -84,7 +84,7 @@ Flags:
 			slog.Error("failed to create provider", "name", name, "error", err)
 			continue
 		}
-		providerRegistry.Register(name, p)
+		providerRegistry.RegisterWithDefault(name, p, pc.DefaultModel)
 	}
 	providerRegistry.SetDefault(cfg.DefaultProvider)
 
@@ -97,6 +97,7 @@ Flags:
 		}
 		// Rebuild all providers from new config.
 		newProviders := make(map[string]provider.Provider)
+		newDefaultModels := make(map[string]string)
 		for name, pc := range newCfg.Providers {
 			newP, createErr := config.CreateProvider(name, pc)
 			if createErr != nil {
@@ -104,8 +105,11 @@ Flags:
 				continue
 			}
 			newProviders[name] = newP
+			if pc.DefaultModel != "" {
+				newDefaultModels[name] = pc.DefaultModel
+			}
 		}
-		providerRegistry.Update(newProviders, newCfg.DefaultProvider)
+		providerRegistry.Update(newProviders, newDefaultModels, newCfg.DefaultProvider)
 		slog.Info("config reloaded", "providers", len(newProviders))
 	})
 	if err != nil {
@@ -139,14 +143,24 @@ Flags:
 			}
 			p = resolvedProvider
 			activeProviderName = providerName
-			defaultModel = modelPart
+			if modelPart != "" {
+				defaultModel = modelPart
+			} else {
+				// provider/ with no model -- use per-provider default.
+				defaultModel = providerRegistry.DefaultModelFor(providerName)
+			}
 		} else {
 			// No prefix: use default provider with the given model name.
 			defaultModel = *modelName
 		}
-	} else if cfg.DefaultModel != "" {
-		// No --model flag but config has a default_model.
-		defaultModel = cfg.DefaultModel
+	} else {
+		// No --model flag: check per-provider default first, then top-level.
+		provDefault := providerRegistry.DefaultModelFor(activeProviderName)
+		if provDefault != "" {
+			defaultModel = provDefault
+		} else if cfg.DefaultModel != "" {
+			defaultModel = cfg.DefaultModel
+		}
 	}
 
 	// Health check: if the selected provider is unreachable, show error and exit.
