@@ -10,6 +10,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/marad/fenec/internal/provider"
 	"github.com/marad/fenec/internal/provider/ollama"
+	openaiProvider "github.com/marad/fenec/internal/provider/openai"
 )
 
 // Config represents the top-level configuration loaded from config.toml.
@@ -125,6 +126,8 @@ func CreateProvider(name string, cfg ProviderConfig) (provider.Provider, error) 
 	switch cfg.Type {
 	case "ollama":
 		return ollama.New(cfg.URL)
+	case "openai":
+		return openaiProvider.New(cfg.URL, cfg.APIKey)
 	default:
 		return nil, fmt.Errorf("unknown provider type %q for provider %q", cfg.Type, name)
 	}
