@@ -197,6 +197,27 @@ func TestCreateProviderOllama(t *testing.T) {
 	assert.Equal(t, "ollama", p.Name())
 }
 
+func TestCreateProviderOpenAI(t *testing.T) {
+	p, err := CreateProvider("test-openai", ProviderConfig{
+		Type:   "openai",
+		URL:    "http://localhost:1234/v1",
+		APIKey: "test-key",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, p)
+	assert.Equal(t, "openai", p.Name())
+}
+
+func TestCreateProviderOpenAINoAPIKey(t *testing.T) {
+	p, err := CreateProvider("lmstudio", ProviderConfig{
+		Type: "openai",
+		URL:  "http://localhost:1234/v1",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, p)
+	assert.Equal(t, "openai", p.Name())
+}
+
 func TestCreateProviderUnknownType(t *testing.T) {
 	_, err := CreateProvider("test-unknown", ProviderConfig{
 		Type: "unknown",
