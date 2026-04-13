@@ -15,21 +15,21 @@ Requirements for multi-provider support. Each maps to roadmap phases.
 
 ### OpenAI-Compatible Support
 
-- [x] **OAIC-01**: User can chat with models served by LM Studio via the OpenAI-compatible protocol
-- [x] **OAIC-02**: User can chat with OpenAI cloud models (GPT-4o, etc.) via the OpenAI API
+- [ ] **OAIC-01**: User can chat with models served by LM Studio via the OpenAI-compatible protocol
+- [ ] **OAIC-02**: User can chat with OpenAI cloud models (GPT-4o, etc.) via the OpenAI API
 - [x] **OAIC-03**: User can use tool calling with OpenAI-compatible providers (non-streaming when tools present)
 - [x] **OAIC-04**: User can switch providers mid-session and continue the conversation
 
 ### Configuration
 
-- [x] **CONF-01**: User can define providers in a TOML config file with name, type, URL, and API key
+- [ ] **CONF-01**: User can define providers in a TOML config file with name, type, URL, and API key
 - [x] **CONF-02**: User can reference environment variables for API keys in config (e.g., `$OPENAI_API_KEY`)
 - [x] **CONF-03**: User can run Fenec with no config file and get the default Ollama provider automatically
-- [x] **CONF-04**: User can modify provider config and have changes take effect without restarting Fenec
+- [ ] **CONF-04**: User can modify provider config and have changes take effect without restarting Fenec
 
 ### Model Routing
 
-- [x] **ROUT-01**: User can select a model with `--model provider/model` to target a specific provider
+- [ ] **ROUT-01**: User can select a model with `--model provider/model` to target a specific provider
 - [x] **ROUT-02**: User can use `--model modelname` (no prefix) to use the default provider
 - [x] **ROUT-03**: User can list available models grouped by provider via `/model`
 - [x] **ROUT-04**: User can discover models from each provider automatically (fetched from provider APIs)
@@ -64,15 +64,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROV-01 | Phase 8 | Complete |
 | PROV-02 | Phase 8 | Complete |
 | PROV-03 | Phase 7 | Complete |
-| OAIC-01 | Phase 10 | Complete |
-| OAIC-02 | Phase 10 | Complete |
+| OAIC-01 | Phase 10 / Phase 12 (gap closure) | Pending |
+| OAIC-02 | Phase 10 / Phase 12 (gap closure) | Pending |
 | OAIC-03 | Phase 10 | Complete |
 | OAIC-04 | Phase 10 | Complete |
-| CONF-01 | Phase 9 | Complete |
+| CONF-01 | Phase 9 / Phase 12 (gap closure) | Pending |
 | CONF-02 | Phase 9 | Complete |
 | CONF-03 | Phase 9 | Complete |
-| CONF-04 | Phase 9 | Complete |
-| ROUT-01 | Phase 11 | Complete |
+| CONF-04 | Phase 9 / Phase 12 (gap closure) | Pending |
+| ROUT-01 | Phase 11 / Phase 12 (gap closure) | Pending |
 | ROUT-02 | Phase 11 | Complete |
 | ROUT-03 | Phase 11 | Complete |
 | ROUT-04 | Phase 11 | Complete |
@@ -84,4 +84,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-04-12*
-*Last updated: 2026-04-12 after roadmap creation*
+*Last updated: 2026-04-13 after v1.1 audit — Phase 12 gap closure added for OAIC-01, OAIC-02, CONF-01, CONF-04, ROUT-01*

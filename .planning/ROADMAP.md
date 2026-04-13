@@ -30,6 +30,7 @@ See `.planning/milestones/v1.0-ROADMAP.md` for full phase details.
 - [ ] **Phase 9: Configuration** - Config-driven provider definitions with TOML file and zero-config default
 - [x] **Phase 10: OpenAI-Compatible Client** - OpenAI-protocol adapter for LM Studio, OpenAI, and compatible backends (completed 2026-04-13)
 - [x] **Phase 11: Model Routing** - Unified model selection with `--model provider/model` syntax and model discovery (completed 2026-04-13)
+- [ ] **Phase 12: Multi-Provider Integration Polish** - Gap closure: OpenAI streaming thinking delivery, per-provider default_model wiring, hot-reload REPL refresh
 
 ## Phase Details
 
@@ -105,6 +106,21 @@ Plans:
 - [x] 11-01-PLAN.md -- Registry routing, --model provider/model CLI flag, and /model REPL switching
 - [x] 11-02-PLAN.md -- Parallel model discovery and /model grouped listing display
 
+### Phase 12: Multi-Provider Integration Polish
+**Goal**: Close 3 integration gaps identified by v1.1 milestone audit — partial delivery of thinking in OpenAI streaming, dead `default_model` per-provider field, and stale provider reference in REPL after hot-reload
+**Depends on**: Phase 11
+**Requirements**: OAIC-01, OAIC-02, CONF-01, CONF-04, ROUT-01 (gap closure — previously marked partial)
+**Gap Closure**: Closes all 3 integration gaps from `.planning/v1.1-MILESTONE-AUDIT.md`
+**Success Criteria** (what must be TRUE):
+  1. OpenAI adapter `chatStreaming` delivers thinking content via `onThinking` callback (not silently dropped)
+  2. Per-provider `default_model` in config.toml is consulted when user specifies `--model provider/` without a model part, or via provider switch without model
+  3. Config hot-reload refreshes the REPL's active provider instance so URL/API key changes take effect mid-session without requiring `/model` or restart
+  4. All 15 milestone requirements move from partial to satisfied in re-audit
+**Plans:** TBD
+
+Plans:
+- [ ] 12-01: TBD
+
 ## Progress
 
 **Execution Order:**
@@ -123,3 +139,4 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
 | 9. Configuration | v1.1 | 0/2 | Planning complete | - |
 | 10. OpenAI-Compatible Client | v1.1 | 2/2 | Complete    | 2026-04-13 |
 | 11. Model Routing | v1.1 | 2/2 | Complete    | 2026-04-13 |
+| 12. Multi-Provider Integration Polish | v1.1 | 0/0 | Not started | - |
