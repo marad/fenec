@@ -84,11 +84,11 @@ Plans:
   2. User can chat with OpenAI cloud models (GPT-4o etc.) by configuring an API key
   3. User can use tool calling with OpenAI-compatible providers, with automatic non-streaming fallback when tools are present
   4. User can switch providers mid-session (e.g., `/provider lmstudio`) and continue the same conversation
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 10-01: TBD
-- [ ] 10-02: TBD
+- [ ] 10-01-PLAN.md -- Add openai-go SDK, create OpenAI adapter with streaming/non-streaming dispatch, wire factory
+- [ ] 10-02-PLAN.md -- Comprehensive adapter test suite and factory test extension
 
 ### Phase 11: Model Routing
 **Goal**: Users have a unified model selection experience across all providers, with discovery and CLI ergonomics
@@ -121,5 +121,5 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
 | 7. Canonical Types | v1.1 | 0/2 | Planning complete | - |
 | 8. Provider Abstraction | v1.1 | 0/1 | Planning complete | - |
 | 9. Configuration | v1.1 | 0/2 | Planning complete | - |
-| 10. OpenAI-Compatible Client | v1.1 | 0/0 | Not started | - |
+| 10. OpenAI-Compatible Client | v1.1 | 0/2 | Planning complete | - |
 | 11. Model Routing | v1.1 | 0/0 | Not started | - |
