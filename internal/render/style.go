@@ -34,6 +34,10 @@ var (
 	thinkingStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#565B73")).
 		Italic(true)
+
+	// providerHeaderStyle styles provider section headers in model listing (muted gray).
+	providerHeaderStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#6B7089"))
 )
 
 // FormatPrompt returns the readline prompt string: [modelName]>
@@ -104,6 +108,25 @@ func FormatThinkingChunk(chunk string) string {
 // FormatThinkingLabel returns the styled [thinking] label.
 func FormatThinkingLabel() string {
 	return thinkingStyle.Render("[thinking]")
+}
+
+// FormatProviderHeader returns a styled provider section header for model listing.
+func FormatProviderHeader(name string) string {
+	return providerHeaderStyle.Render("## " + name)
+}
+
+// FormatModelEntry returns a formatted model entry for the listing.
+// Active models are prefixed with an arrow; inactive ones are indented to align.
+func FormatModelEntry(name string, active bool) string {
+	if active {
+		return "  -> " + name
+	}
+	return "     " + name
+}
+
+// FormatProviderError returns a muted inline error for unreachable providers.
+func FormatProviderError(name string, err string) string {
+	return providerHeaderStyle.Render("  (unreachable: " + err + ")")
 }
 
 // FormatToolEvent returns a styled banner for tool lifecycle events.

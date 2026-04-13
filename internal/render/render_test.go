@@ -65,6 +65,31 @@ func TestFormatThinkingSkipsEmptyLines(t *testing.T) {
 	assert.Contains(t, result, "Line E")
 }
 
+func TestFormatProviderHeader(t *testing.T) {
+	result := FormatProviderHeader("ollama")
+	assert.Contains(t, result, "## ollama")
+}
+
+func TestFormatModelEntryActive(t *testing.T) {
+	result := FormatModelEntry("gemma4", true)
+	assert.Contains(t, result, "->")
+	assert.Contains(t, result, "gemma4")
+}
+
+func TestFormatModelEntryInactive(t *testing.T) {
+	result := FormatModelEntry("llama3.2", false)
+	assert.NotContains(t, result, "->")
+	assert.Contains(t, result, "llama3.2")
+	// Should start with spaces for alignment.
+	assert.True(t, len(result) > 0 && result[0] == ' ')
+}
+
+func TestFormatProviderError(t *testing.T) {
+	result := FormatProviderError("lmstudio", "connection refused")
+	assert.Contains(t, result, "unreachable")
+	assert.Contains(t, result, "connection refused")
+}
+
 func TestFormatThinkingChunk(t *testing.T) {
 	result := FormatThinkingChunk("some reasoning")
 	assert.Contains(t, result, "some reasoning")
