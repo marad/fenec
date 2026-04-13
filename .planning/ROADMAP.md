@@ -69,11 +69,11 @@ Plans:
   2. User can use `$ENV_VAR` syntax for API keys in config and have them resolved at load time
   3. User can run Fenec with no config file and get the default Ollama provider at localhost:11434 automatically
   4. User can edit config.toml while Fenec is running and have changes take effect without restarting
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 09-01: TBD
-- [ ] 09-02: TBD
+- [ ] 09-01-PLAN.md -- TOML config loading, env var resolution, provider registry, and config-driven main.go
+- [ ] 09-02-PLAN.md -- Config file watcher with fsnotify for hot-reload without restart
 
 ### Phase 10: OpenAI-Compatible Client
 **Goal**: Users can chat and use tools with any OpenAI-compatible provider (LM Studio, OpenAI cloud, etc.) alongside the existing Ollama provider
@@ -120,6 +120,6 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
 | 6. File Tools | v1.0 | 2/2 | Complete | 2026-04-12 |
 | 7. Canonical Types | v1.1 | 0/2 | Planning complete | - |
 | 8. Provider Abstraction | v1.1 | 0/1 | Planning complete | - |
-| 9. Configuration | v1.1 | 0/0 | Not started | - |
+| 9. Configuration | v1.1 | 0/2 | Planning complete | - |
 | 10. OpenAI-Compatible Client | v1.1 | 0/0 | Not started | - |
 | 11. Model Routing | v1.1 | 0/0 | Not started | - |
