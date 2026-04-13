@@ -35,10 +35,10 @@ An extensible AI agent platform that can grow its own capabilities through self-
 - ✓ Built-in file tools with path safety — v1.0
 - ✓ Existing Ollama workflow works with zero config changes after type decoupling — v1.1 Phase 7
 - ✓ Provider abstraction with Ollama adapter — v1.1 Phase 8
+- ✓ Config-driven provider definitions with TOML + hot-reload — v1.1 Phase 9
 
 ### Active
 - [ ] OpenAI-compatible API client with tool calling
-- [ ] Config-driven provider definitions
 - [ ] Unified `--model provider/model` selection with provider routing
 - [ ] Model discovery from providers
 
@@ -95,4 +95,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-12 after Phase 8 completion*
+*Last updated: 2026-04-13 after Phase 9 completion*
