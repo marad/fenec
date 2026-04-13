@@ -64,6 +64,13 @@ func (r *ProviderRegistry) Update(providers map[string]provider.Provider, defaul
 	r.defaultProvider = defaultName
 }
 
+// DefaultName returns the name of the default provider, or empty string if not set.
+func (r *ProviderRegistry) DefaultName() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.defaultProvider
+}
+
 // Names returns a sorted list of all registered provider names.
 func (r *ProviderRegistry) Names() []string {
 	r.mu.RLock()

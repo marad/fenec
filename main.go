@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	pflag "github.com/spf13/pflag"
@@ -23,7 +24,7 @@ import (
 
 func main() {
 	// Parse flags.
-	modelName := pflag.StringP("model", "m", "", "Ollama model to use (default: first available)")
+	modelName := pflag.StringP("model", "m", "", "Model to use (provider/model or just model name)")
 	pipeMode := pflag.BoolP("pipe", "p", false, "Read all stdin as a single message and send to model")
 	debugMode := pflag.BoolP("debug", "d", false, "Show tool call results and other debug output")
 	yoloMode := pflag.BoolP("yolo", "y", false, "Auto-approve all dangerous commands (use with caution)")
@@ -36,6 +37,7 @@ func main() {
 Usage:
   fenec                    Start interactive chat
   fenec --model gemma4     Use a specific model
+  fenec -m ollama/gemma4   Use a specific provider and model
   echo "prompt" | fenec    Send piped input to model
   fenec --yolo             Auto-approve all tool commands
 
@@ -120,44 +122,52 @@ Flags:
 			fmt.Sprintf("No default provider available: %v", err)))
 		os.Exit(1)
 	}
+	activeProviderName := providerRegistry.DefaultName()
 
-	// Health check: if the default provider is unreachable, show error with fix instructions and exit.
+	// Handle --model flag: supports provider/model syntax for cross-provider targeting.
+	var defaultModel string
+	if *modelName != "" {
+		if strings.Contains(*modelName, "/") {
+			// provider/model syntax: resolve provider and model separately.
+			parts := strings.SplitN(*modelName, "/", 2)
+			providerName, modelPart := parts[0], parts[1]
+			resolvedProvider, ok := providerRegistry.Get(providerName)
+			if !ok {
+				fmt.Fprintf(os.Stderr, "Unknown provider %q. Available providers: %s\n",
+					providerName, strings.Join(providerRegistry.Names(), ", "))
+				os.Exit(1)
+			}
+			p = resolvedProvider
+			activeProviderName = providerName
+			defaultModel = modelPart
+		} else {
+			// No prefix: use default provider with the given model name.
+			defaultModel = *modelName
+		}
+	} else if cfg.DefaultModel != "" {
+		// No --model flag but config has a default_model.
+		defaultModel = cfg.DefaultModel
+	}
+
+	// Health check: if the selected provider is unreachable, show error and exit.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := p.Ping(ctx); err != nil {
-		providerURL := cfg.Providers[cfg.DefaultProvider].URL
+		providerURL := cfg.Providers[activeProviderName].URL
 		fmt.Fprintln(os.Stderr, render.FormatError(
-			fmt.Sprintf("Cannot connect to provider %q at %s. Is it running?\n\nDetails: %v", cfg.DefaultProvider, providerURL, err)))
+			fmt.Sprintf("Cannot connect to provider %q at %s. Is it running?\n\nDetails: %v", activeProviderName, providerURL, err)))
 		os.Exit(1)
 	}
 
-	// Get available models and select first (per D-09).
-	models, err := p.ListModels(ctx)
-	if err != nil || len(models) == 0 {
-		fmt.Fprintln(os.Stderr, render.FormatError(
-			"No models available. Pull one with: ollama pull gemma4"))
-		os.Exit(1)
-	}
-	defaultModel := models[0]
-
-	// Handle --model flag: validate and override default model selection.
-	if *modelName != "" {
-		found := false
-		for _, m := range models {
-			if m == *modelName {
-				found = true
-				defaultModel = m
-				break
-			}
-		}
-		if !found {
-			fmt.Fprintf(os.Stderr, "Model %q not found. Available models:\n", *modelName)
-			for _, m := range models {
-				fmt.Fprintf(os.Stderr, "  - %s\n", m)
-			}
-			fmt.Fprintf(os.Stderr, "\nPull it with: ollama pull %s\n", *modelName)
+	// If no model was specified, pick the first available from the provider.
+	if defaultModel == "" {
+		models, err := p.ListModels(ctx)
+		if err != nil || len(models) == 0 {
+			fmt.Fprintln(os.Stderr, render.FormatError(
+				"No models available. Pull one with: ollama pull gemma4"))
 			os.Exit(1)
 		}
+		defaultModel = models[0]
 	}
 
 	// Load system prompt (per D-15).
