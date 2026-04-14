@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-04-12)
 
 ## Current Position
 
-Phase: 13 — Model Catalog (next)
+Phase: — (v1.2 complete)
 Plan: —
-Status: Phase 12 complete, Phase 13 ready to plan
-Last activity: 2026-04-14 — Phase 12 executed and verified
+Status: Milestone v1.2 shipped — GitHub Models Provider fully implemented
+Last activity: 2026-04-14 — Phase 13 executed and verified
 
 ## Performance Metrics
 

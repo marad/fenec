@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 Fenec Platform Foundation** — Phases 1-6 (shipped 2026-04-12)
 - ✅ **v1.1 Multi-Provider Support** — Phases 7-11 (shipped 2026-04-14)
-- [ ] **v1.2 GitHub Models Provider** — Phases 12-13
+- ✅ **v1.2 GitHub Models Provider** — Phases 12-13 (shipped 2026-04-14)
 
 ## Phases
 
