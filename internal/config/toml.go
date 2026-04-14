@@ -9,15 +9,17 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/marad/fenec/internal/provider"
+	copilotProvider "github.com/marad/fenec/internal/provider/copilot"
 	"github.com/marad/fenec/internal/provider/ollama"
 	openaiProvider "github.com/marad/fenec/internal/provider/openai"
 )
 
 // Config represents the top-level configuration loaded from config.toml.
 type Config struct {
-	DefaultProvider string                    `toml:"default_provider"`
-	DefaultModel    string                    `toml:"default_model"`
-	Providers       map[string]ProviderConfig `toml:"providers"`
+	DefaultProvider  string                    `toml:"default_provider"`
+	DefaultModel     string                    `toml:"default_model"`
+	MaxContextLength int                       `toml:"max_context_length"`
+	Providers        map[string]ProviderConfig `toml:"providers"`
 }
 
 // ProviderConfig represents the configuration for a single provider.
@@ -73,7 +75,8 @@ func resolveEnvVars(cfg *Config) {
 // provider at localhost:11434.
 func DefaultConfig() *Config {
 	return &Config{
-		DefaultProvider: "ollama",
+		DefaultProvider:  "ollama",
+		MaxContextLength: 65536,
 		Providers: map[string]ProviderConfig{
 			"ollama": {
 				Type: "ollama",
@@ -95,6 +98,7 @@ func WriteDefaultConfig(path string) error {
 	}
 
 	defaultTOML := `default_provider = "ollama"
+max_context_length = 65536
 
 [providers.ollama]
 type = "ollama"
@@ -128,6 +132,8 @@ func CreateProvider(name string, cfg ProviderConfig) (provider.Provider, error) 
 		return ollama.New(cfg.URL)
 	case "openai":
 		return openaiProvider.New(cfg.URL, cfg.APIKey)
+	case "copilot":
+		return copilotProvider.New()
 	default:
 		return nil, fmt.Errorf("unknown provider type %q for provider %q", cfg.Type, name)
 	}
