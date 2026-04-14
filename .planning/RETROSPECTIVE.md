@@ -87,6 +87,48 @@
 
 ---
 
+## Milestone: v1.2 — GitHub Models Provider
+
+**Shipped:** 2026-04-14
+**Phases:** 2 | **Plans:** 4 | **Commits:** ~15
+
+### What Was Built
+- `internal/provider/copilot/` package wrapping `openai.Provider` via delegation — GitHub Models via `gh auth token`, no API key needed
+- Token resolution chain (GH_TOKEN → GITHUB_TOKEN → `gh auth token`) with injectable functions for testability
+- Catalog HTTP client with lazy double-checked locking cache — fetches 40+ models from `https://models.github.ai/v1/models`
+- Real `max_input_tokens` context lengths from catalog (e.g., gpt-4o-mini=131072, gpt-4.1=1048576)
+- Catalog-backed `Ping()` — validates auth and connectivity with a single catalog fetch; no chat round-trip
+- Verified `/model` REPL grouping works correctly without code changes — `Name()="copilot"` + `ListModels()` integration was free
+
+### What Worked
+- Delegation pattern (copilot wraps openai) was the right call — streaming and tool calling "just worked" with zero adapter code
+- `fetchCatalogFrom(ctx, url)` test injection pattern (separate URL-parameterized method) gave full mock HTTP coverage without test-only struct fields
+- Cache-seeding pattern in tests (`fetchCatalogFrom` then calling public methods) is clean and reusable
+- Phase 12 stubs that delegated to `inner` provider meant Phase 13 could be purely additive — no regressions
+
+### What Was Inefficient
+- The openai-go SDK's `ListAutoPaging` was found incompatible with GitHub Models catalog schema only during implementation — a quick API test before planning would have saved one iteration
+- Phase 12 shipped stub `Ping()` that still made a direct HTTP call — this was then replaced in Phase 13. Planning the catalog integration together would have been cleaner.
+
+### Patterns Established
+- Provider delegation pattern: `copilot.Provider` embeds `*openai.Provider` as `inner` — all protocol-level operations delegated
+- Injectable functions for subprocess testing: `resolveTokenWith(lookPathFn, commandFn)` pattern avoids full mock frameworks
+- `fetchCatalogFrom` pattern: public API method uses const URL, test helper accepts URL — no test-only struct fields
+- `var _ provider.Provider = (*Provider)(nil)` compile-time guard at package top (consistent with v1.1 convention)
+
+### Key Lessons
+1. Catalog compatibility is not guaranteed by openai-go SDK even for OpenAI-compatible endpoints — validate response schema early, especially for list operations
+2. Two-phase stubs (delegate in P12, replace in P13) added a clean separation but created unnecessary intermediate code — when the final implementation is known upfront, build it in phase 1
+3. `exec.ExitError` cannot be constructed directly in Go — real subprocess (`sh -c exit N`) is the pragmatic mock for exit code testing
+4. `/model` REPL grouping is provider-agnostic by design — adding a new provider requires no REPL changes if `Name()` and `ListModels()` are correct
+
+### Cost Observations
+- Model mix: ~100% sonnet (small, well-defined phases with clear patterns from v1.1)
+- Sessions: 1
+- Notable: v1.2 was the fastest milestone yet — 2 phases, clear patterns from v1.1, delegation approach eliminated ~200 lines of boilerplate
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -95,6 +137,7 @@
 |-----------|---------|--------|------------|
 | v1.0 | 102 | 6 | First milestone — established GSD workflow patterns |
 | v1.1 | 57 | 5 | Provider abstraction layer; introduced milestone audit before complete |
+| v1.2 | 15 | 2 | Delegation pattern; fastest milestone — built on v1.1 provider system |
 
 ### Cumulative Quality
 
@@ -102,6 +145,7 @@
 |-----------|--------|------------|----------|
 | v1.0 | 6,970 | 15+ | 7 |
 | v1.1 | 10,335 (4,499 prod + 5,836 test) | 20+ | 10 |
+| v1.2 | ~11,300 | 22+ | 11 |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -109,3 +153,4 @@
 2. Interface-driven tool design enables painless extensibility
 3. Generate VERIFICATION.md immediately after execution — retroactive generation causes audit overhead
 4. Compile-time interface guards are cheap and catch real bugs early
+5. Delegation wrapping pattern avoids duplicating protocol-level code — prefer `inner.Method()` over re-implementing

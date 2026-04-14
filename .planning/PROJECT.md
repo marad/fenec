@@ -2,23 +2,15 @@
 
 ## What This Is
 
-A personal AI assistant platform built in Go with Lua extensibility. Provides a CLI chat interface connecting to multiple LLM providers (Ollama, LM Studio, OpenAI-compatible) through a config-driven provider abstraction with unified tool calling and model routing.
+A personal AI assistant platform built in Go with Lua extensibility. Provides a CLI chat interface connecting to multiple LLM providers (Ollama, LM Studio, OpenAI-compatible, GitHub Models) through a config-driven provider abstraction with unified tool calling and model routing.
 
 ## Core Value
 
 An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
 
-## Current Milestone: v1.2 GitHub Models Provider
+## Current Milestone: _Planning next milestone_
 
-**Goal:** Add a dedicated `copilot` provider type connecting to the GitHub Models API, authenticated through the existing `gh` CLI session — no PAT management required.
-
-**Target features:**
-- `type = "copilot"` config with no url/api_key needed
-- Auth via `gh auth token` at provider init (requires `gh` CLI authenticated)
-- Clear error if `gh` not installed or not authenticated
-- Full tool calling + streaming (OpenAI-compatible wrapper)
-- Model listing via /models endpoint
-- `/model` groups models under `copilot/*`
+**Status:** v1.2 shipped — GitHub Models Provider fully implemented. Run `/gsd-new-milestone` to define v1.3.
 
 ## Requirements
 
@@ -39,6 +31,9 @@ An extensible AI agent platform that can grow its own capabilities through self-
 - ✓ OpenAI-compatible API client with tool calling (LM Studio, OpenAI cloud) — v1.1
 - ✓ `--model provider/model` unified model selection with provider routing — v1.1
 - ✓ `/model` REPL command with provider-grouped model listing — v1.1
+- ✓ `type = "copilot"` provider with zero-config auth via `gh auth token` — v1.2
+- ✓ GitHub Models catalog listing (40+ models) with real context lengths — v1.2
+- ✓ Ping validates auth/connectivity via catalog fetch, no chat round-trip — v1.2
 
 ### Active
 
@@ -60,6 +55,8 @@ _(Define with `/gsd-new-milestone`)_
 - gopher-lua (pure Go Lua 5.1 VM) embeds well and provides fast script execution
 - The self-extension pattern means the agent's tool library grows with use
 - Architecture is designed for easy addition of new built-in tools and integrations
+- As of v1.2: ~11,300 LOC Go; 3 provider adapters (ollama, openai-compat, copilot); 5-method Provider interface
+- GitHub Models copilot provider connects to `https://models.github.ai/inference` via the openai-go v3 SDK, authenticated through the `gh` CLI session
 
 ## Constraints
 
@@ -101,5 +98,12 @@ This document evolves at phase transitions and milestone boundaries.
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
+| Copilot provider wraps openai.Provider via delegation | No duplicated streaming/tool-calling logic; delegation pattern proven by Phase 12 | ✓ Good — clean adapter boundary |
+| Token resolution uses injectable functions (resolveTokenWith) | Testability for os/exec subprocess calls without mocking entire exec package | ✓ Good — 8 unit test paths covered |
+| ExitError mocks via real subprocess (sh -c exit N) | exec.ExitError cannot be constructed directly in Go | ✓ Good — pragmatic test approach |
+| fetchCatalogFrom(ctx, url) for testability | Separate URL-parameterized method avoids test-only struct fields | ✓ Good — clean test isolation |
+| Double-checked locking for catalog cache | Thread-safe lazy loading — fast read path, single HTTP call per session | ✓ Good — prevents duplicate catalog fetches |
+| net/http removed from copilot.go after Phase 13 | All HTTP lives in catalog.go — copilot.go is pure provider facade | ✓ Good — clean separation of concerns |
+
 ---
-*Last updated: 2026-04-14 after v1.1 milestone*
+*Last updated: 2026-04-14 after v1.2 milestone*

@@ -1,5 +1,19 @@
 # Milestones
 
+## v1.2 GitHub Models Provider (Shipped: 2026-04-14)
+
+**Phases completed:** 2 phases, 4 plans, 4 tasks
+
+**Key accomplishments:**
+
+- GitHub Models `copilot` provider with zero-config auth: resolves token via GH_TOKEN → GITHUB_TOKEN → `gh auth token` priority chain with actionable error messages for missing/unauthenticated gh CLI
+- Copilot provider wraps `openai.Provider` via delegation — full streaming, tool calling, and model routing work identically to the existing OpenAI adapter with no duplicated logic
+- Catalog HTTP client with lazy double-checked locking cache fetching 40+ models from `https://models.github.ai/v1/models` — real context lengths from `limits.max_input_tokens` (e.g., gpt-4o-mini=131072, gpt-4.1=1048576)
+- Ping validates auth and connectivity via single catalog fetch — no chat round-trip needed; 401 returns auth-specific error, network error returns connectivity error
+- `/model` REPL correctly groups catalog entries under `copilot` heading with publisher-prefixed IDs (`openai/gpt-4o-mini`, `meta/llama-3.3-70b-instruct`)
+
+---
+
 ## v1.1 Multi-Provider Support (Shipped: 2026-04-14)
 
 **Phases completed:** 5 phases, 9 plans, 18 tasks
