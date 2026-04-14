@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: GitHub Models Provider
 status: planning
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-04-14T12:55:01.943Z"
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-04-14T13:00:05.697Z"
 last_activity: 2026-04-14 — Roadmap created for v1.2
 progress:
   total_phases: 2
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 50
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -58,6 +58,7 @@ Last activity: 2026-04-14 — Roadmap created for v1.2
 | Phase 10 P01 | 4min | 2 tasks | 4 files |
 | Phase 10-openai-compatible-client P02 | 5min | 2 tasks | 2 files |
 | Phase 12 P01 | 1min | 2 tasks | 3 files |
+| Phase 12 P02 | 2min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,8 @@ Recent decisions affecting current work:
 - [Phase 10-openai-compatible-client]: Mock SSE decoder for ssestream.Stream testing; JSON unmarshal for SDK response construction
 - [Phase 12]: Copilot provider wraps openai.Provider with delegation — no duplicated API logic
 - [Phase 12]: Token resolution uses injectable functions (resolveTokenWith) for testability
+- [Phase 12]: ExitError mocks use real subprocess (sh -c exit N) since exec.ExitError cannot be constructed directly
+- [Phase 12]: TestNewWithoutTokenFailsWhenNoGh skips gracefully when gh CLI is installed and authenticated
 
 ### Pending Todos
 
@@ -109,5 +112,5 @@ None yet.
 ## Session Continuity
 
 Last activity: 2026-04-14
-Stopped at: Completed 12-01-PLAN.md
+Stopped at: Completed 12-02-PLAN.md
 Resume file: None

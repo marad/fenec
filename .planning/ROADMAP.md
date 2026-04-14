@@ -37,7 +37,7 @@ See `.planning/milestones/v1.1-ROADMAP.md` for full phase details.
 
 ## v1.2 GitHub Models Provider (Phases 12-13)
 
-- [ ] **Phase 12: Copilot Provider** — Token resolution, openai-go wrapper, config integration
+- [x] **Phase 12: Copilot Provider** — Token resolution, openai-go wrapper, config integration (completed 2026-04-14)
 - [ ] **Phase 13: Model Catalog** — Custom HTTP listing, context length from catalog, Ping, `/model` grouping
 
 ### Phase 12: Copilot Provider
@@ -49,10 +49,10 @@ See `.planning/milestones/v1.1-ROADMAP.md` for full phase details.
   2. Auth token resolves automatically via GH_TOKEN → GITHUB_TOKEN → `gh auth token` priority chain
   3. Missing or unauthenticated `gh` CLI produces an actionable error message with specific remediation steps
   4. Streaming chat and tool calling work through the copilot provider identically to the openai provider
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
   - [x] 12-01-PLAN.md — Provider skeleton + token resolution (token.go, copilot.go, config integration)
-  - [ ] 12-02-PLAN.md — Tests + error handling (token_test.go, copilot_test.go, full verification)
+  - [x] 12-02-PLAN.md — Tests + error handling (token_test.go, copilot_test.go, full verification)
 
 ### Phase 13: Model Catalog
 **Goal**: Model listing, context length, and Ping use the GitHub Models catalog instead of the incompatible SDK endpoint
@@ -81,5 +81,5 @@ Plans:
 | 9. Configuration | v1.1 | 2/2 | Complete | 2026-04-13 |
 | 10. OpenAI-Compatible Client | v1.1 | 2/2 | Complete | 2026-04-13 |
 | 11. Model Routing | v1.1 | 2/2 | Complete | 2026-04-14 |
-| 12. Copilot Provider | v1.2 | 1/2 | In Progress|  |
+| 12. Copilot Provider | v1.2 | 2/2 | Complete   | 2026-04-14 |
 | 13. Model Catalog | v1.2 | 0/2 | Planned | - |
