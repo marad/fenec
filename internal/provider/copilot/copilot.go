@@ -3,7 +3,6 @@ package copilot
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"sync"
 
 	"github.com/marad/fenec/internal/model"
@@ -70,20 +69,14 @@ func (p *Provider) ListModels(ctx context.Context) ([]string, error) {
 	return ids, nil
 }
 
-// Ping verifies the provider is reachable by fetching the GitHub Models catalog.
+// Ping verifies the provider is reachable and authenticated by fetching the model catalog.
 func (p *Provider) Ping(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, catalogURL, nil)
+	models, err := p.fetchCatalog(ctx)
 	if err != nil {
-		return fmt.Errorf("copilot: creating ping request: %w", err)
+		return fmt.Errorf("cannot connect to GitHub Models: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+p.token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("copilot: cannot reach GitHub Models API: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("copilot: GitHub Models API returned %s", resp.Status)
+	if len(models) == 0 {
+		return fmt.Errorf("copilot: GitHub Models catalog returned no models")
 	}
 	return nil
 }
