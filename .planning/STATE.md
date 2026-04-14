@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: GitHub Models Provider
-status: roadmap complete
-stopped_at: roadmap created, ready for phase 12 planning
-last_updated: "2026-04-14T12:00:00.000Z"
-last_activity: 2026-04-14
+status: planning
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-04-14T12:55:01.943Z"
+last_activity: 2026-04-14 — Roadmap created for v1.2
 progress:
   total_phases: 2
   completed_phases: 0
-  total_plans: 4
-  completed_plans: 0
-  percent: 0
+  total_plans: 2
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -57,6 +57,7 @@ Last activity: 2026-04-14 — Roadmap created for v1.2
 | Phase 09-02 P02 | 2min | 2 tasks | 5 files |
 | Phase 10 P01 | 4min | 2 tasks | 4 files |
 | Phase 10-openai-compatible-client P02 | 5min | 2 tasks | 2 files |
+| Phase 12 P01 | 1min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,8 @@ Recent decisions affecting current work:
 - [Phase 10]: Dummy API key 'not-needed' for local providers to prevent SDK env var lookup
 - [Phase 10]: GetContextLength returns 0 for OpenAI (API handles limits server-side)
 - [Phase 10-openai-compatible-client]: Mock SSE decoder for ssestream.Stream testing; JSON unmarshal for SDK response construction
+- [Phase 12]: Copilot provider wraps openai.Provider with delegation — no duplicated API logic
+- [Phase 12]: Token resolution uses injectable functions (resolveTokenWith) for testability
 
 ### Pending Todos
 
@@ -106,5 +109,5 @@ None yet.
 ## Session Continuity
 
 Last activity: 2026-04-14
-Stopped at: Completed 10-02-PLAN.md
+Stopped at: Completed 12-01-PLAN.md
 Resume file: None
