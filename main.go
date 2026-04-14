@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	pflag "github.com/spf13/pflag"
@@ -23,7 +24,7 @@ import (
 
 func main() {
 	// Parse flags.
-	modelName := pflag.StringP("model", "m", "", "Ollama model to use (default: first available)")
+	modelName := pflag.StringP("model", "m", "", "Model to use (provider/model or just model name)")
 	pipeMode := pflag.BoolP("pipe", "p", false, "Read all stdin as a single message and send to model")
 	debugMode := pflag.BoolP("debug", "d", false, "Show tool call results and other debug output")
 	yoloMode := pflag.BoolP("yolo", "y", false, "Auto-approve all dangerous commands (use with caution)")
@@ -120,44 +121,50 @@ Flags:
 			fmt.Sprintf("No default provider available: %v", err)))
 		os.Exit(1)
 	}
+	activeProviderName := providerRegistry.DefaultName()
 
-	// Health check: if the default provider is unreachable, show error with fix instructions and exit.
+	// Handle --model flag: support "provider/model" or bare "model" syntax.
+	if *modelName != "" {
+		if idx := strings.Index(*modelName, "/"); idx != -1 {
+			parts := strings.SplitN(*modelName, "/", 2)
+			providerName, modelPart := parts[0], parts[1]
+			namedProvider, ok := providerRegistry.Get(providerName)
+			if !ok {
+				fmt.Fprintf(os.Stderr, "Provider %q not found. Available providers:\n", providerName)
+				for _, n := range providerRegistry.Names() {
+					fmt.Fprintf(os.Stderr, "  - %s\n", n)
+				}
+				os.Exit(1)
+			}
+			p = namedProvider
+			activeProviderName = providerName
+			*modelName = modelPart
+		}
+		// If no "/" and cfg.DefaultModel is overridden, just use the flag value as-is.
+	} else if cfg.DefaultModel != "" {
+		*modelName = cfg.DefaultModel
+	}
+
+	// Health check: if the selected provider is unreachable, show error and exit.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := p.Ping(ctx); err != nil {
-		providerURL := cfg.Providers[cfg.DefaultProvider].URL
+		providerURL := cfg.Providers[activeProviderName].URL
 		fmt.Fprintln(os.Stderr, render.FormatError(
-			fmt.Sprintf("Cannot connect to provider %q at %s. Is it running?\n\nDetails: %v", cfg.DefaultProvider, providerURL, err)))
+			fmt.Sprintf("Cannot connect to provider %q at %s. Is it running?\n\nDetails: %v", activeProviderName, providerURL, err)))
 		os.Exit(1)
 	}
 
-	// Get available models and select first (per D-09).
-	models, err := p.ListModels(ctx)
-	if err != nil || len(models) == 0 {
-		fmt.Fprintln(os.Stderr, render.FormatError(
-			"No models available. Pull one with: ollama pull gemma4"))
-		os.Exit(1)
-	}
-	defaultModel := models[0]
-
-	// Handle --model flag: validate and override default model selection.
-	if *modelName != "" {
-		found := false
-		for _, m := range models {
-			if m == *modelName {
-				found = true
-				defaultModel = m
-				break
-			}
-		}
-		if !found {
-			fmt.Fprintf(os.Stderr, "Model %q not found. Available models:\n", *modelName)
-			for _, m := range models {
-				fmt.Fprintf(os.Stderr, "  - %s\n", m)
-			}
-			fmt.Fprintf(os.Stderr, "\nPull it with: ollama pull %s\n", *modelName)
+	// Get available models and select first (per D-09), unless --model was specified.
+	defaultModel := *modelName
+	if defaultModel == "" {
+		models, err := p.ListModels(ctx)
+		if err != nil || len(models) == 0 {
+			fmt.Fprintln(os.Stderr, render.FormatError(
+				"No models available. Pull one with: ollama pull gemma4"))
 			os.Exit(1)
 		}
+		defaultModel = models[0]
 	}
 
 	// Load system prompt (per D-15).
@@ -173,6 +180,10 @@ Flags:
 	if err != nil {
 		// Non-fatal: use fallback.
 		ctxLen = 4096
+	}
+	// Cap context length if configured.
+	if cfg.MaxContextLength > 0 && ctxLen > cfg.MaxContextLength {
+		ctxLen = cfg.MaxContextLength
 	}
 
 	// Create context tracker (85% threshold triggers truncation).
@@ -273,7 +284,7 @@ Flags:
 	}
 
 	// Create and run REPL.
-	r, err := repl.NewREPL(p, defaultModel, systemPrompt, tracker, store, toolRegistry)
+	r, err := repl.NewREPL(p, defaultModel, activeProviderName, systemPrompt, tracker, store, toolRegistry, providerRegistry)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, render.FormatError(
 			fmt.Sprintf("Failed to start REPL: %v", err)))

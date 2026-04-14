@@ -35,7 +35,7 @@ func IsCommand(input string) bool {
 // helpText is displayed when the user types /help.
 const helpText = `Available commands:
   /help    - Show this help message
-  /model   - List and select a model
+  /model              - List models or switch: /model [provider/]name
   /save    - Save current conversation to disk
   /load    - List and load a saved conversation
   /history - Show conversation stats (messages, tokens)

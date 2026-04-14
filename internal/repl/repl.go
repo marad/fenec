@@ -25,24 +25,26 @@ import (
 
 // REPL manages the interactive chat loop.
 type REPL struct {
-	provider  provider.Provider
-	conv      *chat.Conversation
-	rl        *readline.Instance
-	mu        sync.Mutex         // Protects streaming state
-	streaming bool               // True while streaming a response
-	cancelFn  context.CancelFunc // For cancelling active generation via Ctrl+C
-	sigCh     chan os.Signal      // SIGINT channel for cleanup
-	tracker   *chat.ContextTracker // Context window tracking
-	store     *session.Store       // Session persistence
-	session   *session.Session     // Current session
-	autoSaved sync.Once            // Ensures auto-save runs only once
-	registry        *tool.Registry // Tool registry for agentic loop
-	baseSystemPrompt string        // System prompt before tool descriptions (for refresh)
-	debug           bool           // Show tool results when true
+	provider         provider.Provider
+	providerRegistry *config.ProviderRegistry
+	activeProvider   string
+	conv             *chat.Conversation
+	rl               *readline.Instance
+	mu               sync.Mutex           // Protects streaming state
+	streaming        bool                 // True while streaming a response
+	cancelFn         context.CancelFunc   // For cancelling active generation via Ctrl+C
+	sigCh            chan os.Signal        // SIGINT channel for cleanup
+	tracker          *chat.ContextTracker // Context window tracking
+	store            *session.Store       // Session persistence
+	session          *session.Session     // Current session
+	autoSaved        sync.Once            // Ensures auto-save runs only once
+	registry         *tool.Registry       // Tool registry for agentic loop
+	baseSystemPrompt string               // System prompt before tool descriptions (for refresh)
+	debug            bool                 // Show tool results when true
 }
 
 // NewREPL creates a REPL connected to the given chat service.
-func NewREPL(p provider.Provider, model string, systemPrompt string, tracker *chat.ContextTracker, store *session.Store, registry *tool.Registry) (*REPL, error) {
+func NewREPL(p provider.Provider, model string, activeProvider string, systemPrompt string, tracker *chat.ContextTracker, store *session.Store, toolRegistry *tool.Registry, providerRegistry *config.ProviderRegistry) (*REPL, error) {
 	historyFile, err := config.HistoryFile()
 	if err != nil {
 		// Non-fatal: proceed without history.
@@ -64,8 +66,8 @@ func NewREPL(p provider.Provider, model string, systemPrompt string, tracker *ch
 	basePrompt := systemPrompt
 
 	// Append tool descriptions to system prompt so the model knows what tools are available.
-	if registry != nil {
-		toolDesc := registry.Describe()
+	if toolRegistry != nil {
+		toolDesc := toolRegistry.Describe()
 		if toolDesc != "" {
 			systemPrompt = systemPrompt + "\n\n## Available Tools\n\n" + toolDesc
 		}
@@ -82,13 +84,15 @@ func NewREPL(p provider.Provider, model string, systemPrompt string, tracker *ch
 
 	r := &REPL{
 		provider:         p,
+		providerRegistry: providerRegistry,
+		activeProvider:   activeProvider,
 		conv:             conv,
 		rl:               rl,
 		sigCh:            make(chan os.Signal, 1),
 		tracker:          tracker,
 		store:            store,
 		session:          sess,
-		registry:         registry,
+		registry:         toolRegistry,
 		baseSystemPrompt: basePrompt,
 	}
 
@@ -152,7 +156,7 @@ func (r *REPL) Run() error {
 			case "/help":
 				fmt.Fprintln(r.rl.Stdout(), helpText)
 			case "/model":
-				r.handleModelCommand()
+				r.handleModelCommand(cmd.Args)
 			case "/save":
 				r.handleSaveCommand()
 			case "/load":
@@ -501,57 +505,58 @@ func (r *REPL) ApproveCommand(command string) bool {
 	return response == "y" || response == "yes"
 }
 
-// handleModelCommand implements the /model interactive selection (per D-09, D-10).
-func (r *REPL) handleModelCommand() {
-	ctx := context.Background()
-	models, err := r.provider.ListModels(ctx)
-	if err != nil {
-		fmt.Fprintln(r.rl.Stdout(), render.FormatError(fmt.Sprintf("Failed to list models: %v", err)))
+// handleModelCommand implements the /model command.
+// With no args: delegates to the multi-provider listing (Plan 02 fills this out).
+// With args: switches provider and/or model based on "provider/model" or bare "model" syntax.
+func (r *REPL) handleModelCommand(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(r.rl.Stdout(), "Use /model <name> or /model provider/model to switch. No args listing coming soon.")
 		return
 	}
 
-	if len(models) == 0 {
-		fmt.Fprintln(r.rl.Stdout(), render.FormatError("No models available. Pull one with: ollama pull gemma4"))
-		return
-	}
+	target := args[0]
+	if idx := strings.Index(target, "/"); idx != -1 {
+		// "provider/model" syntax: switch both provider and model.
+		parts := strings.SplitN(target, "/", 2)
+		providerName, modelName := parts[0], parts[1]
 
-	// Print numbered list with current model marked.
-	fmt.Fprintln(r.rl.Stdout(), "Available models:")
-	currentModel := r.conv.Model
-	for i, m := range models {
-		marker := "  "
-		if m == currentModel {
-			marker = "* "
+		if r.providerRegistry == nil {
+			fmt.Fprintln(r.rl.Stdout(), render.FormatError("Provider registry not available."))
+			return
 		}
-		fmt.Fprintf(r.rl.Stdout(), "  %s%d. %s\n", marker, i+1, m)
+		newProvider, ok := r.providerRegistry.Get(providerName)
+		if !ok {
+			fmt.Fprintf(r.rl.Stdout(), "Unknown provider: %s. Available: %s\n",
+				providerName, strings.Join(r.providerRegistry.Names(), ", "))
+			return
+		}
+
+		r.provider = newProvider
+		r.activeProvider = providerName
+		r.conv.SetModel(modelName)
+
+		// Update context length from new provider.
+		ctx := context.Background()
+		if ctxLen, err := newProvider.GetContextLength(ctx, modelName); err == nil && ctxLen > 0 {
+			r.conv.ContextLength = ctxLen
+		}
+
+		r.rl.SetPrompt(render.FormatPrompt(modelName))
+		fmt.Fprintf(r.rl.Stdout(), "Switched to %s/%s\n", providerName, modelName)
+	} else {
+		// Bare model name: stay on current provider, switch model only.
+		modelName := target
+		r.conv.SetModel(modelName)
+
+		// Update context length from current provider.
+		ctx := context.Background()
+		if ctxLen, err := r.provider.GetContextLength(ctx, modelName); err == nil && ctxLen > 0 {
+			r.conv.ContextLength = ctxLen
+		}
+
+		r.rl.SetPrompt(render.FormatPrompt(modelName))
+		fmt.Fprintf(r.rl.Stdout(), "Switched to %s\n", modelName)
 	}
-
-	// Read selection.
-	origPrompt := r.rl.Config.Prompt
-	r.rl.SetPrompt(fmt.Sprintf("Select model [1-%d]: ", len(models)))
-
-	selection, err := r.rl.Readline()
-	r.rl.SetPrompt(origPrompt)
-
-	if err != nil {
-		return // User cancelled with Ctrl+C or Ctrl+D.
-	}
-
-	selection = strings.TrimSpace(selection)
-	if selection == "" {
-		return
-	}
-
-	num, err := strconv.Atoi(selection)
-	if err != nil || num < 1 || num > len(models) {
-		fmt.Fprintf(r.rl.Stdout(), "Invalid selection: %s. Enter a number between 1 and %d.\n", selection, len(models))
-		return
-	}
-
-	selectedModel := models[num-1]
-	r.conv.SetModel(selectedModel) // Per D-11: history preserved.
-	r.rl.SetPrompt(render.FormatPrompt(selectedModel))
-	fmt.Fprintf(r.rl.Stdout(), "Switched to %s\n", selectedModel)
 }
 
 // autoSave persists the current session to the auto-save file.

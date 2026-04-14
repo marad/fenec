@@ -106,6 +106,31 @@ func TestRegistryDefaultNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
+func TestRegistryDefaultName(t *testing.T) {
+	reg := NewProviderRegistry()
+	reg.Register("ollama", &mockProvider{name: "ollama"})
+	reg.SetDefault("ollama")
+
+	assert.Equal(t, "ollama", reg.DefaultName())
+}
+
+func TestRegistryDefaultNameAfterUpdate(t *testing.T) {
+	reg := NewProviderRegistry()
+	reg.Register("ollama", &mockProvider{name: "ollama"})
+	reg.SetDefault("ollama")
+
+	reg.Update(map[string]provider.Provider{
+		"openai": &mockProvider{name: "openai"},
+	}, "openai")
+
+	assert.Equal(t, "openai", reg.DefaultName())
+}
+
+func TestRegistryDefaultNameEmpty(t *testing.T) {
+	reg := NewProviderRegistry()
+	assert.Equal(t, "", reg.DefaultName())
+}
+
 func TestRegistryConcurrentAccess(t *testing.T) {
 	reg := NewProviderRegistry()
 	reg.Register("initial", &mockProvider{name: "initial"})

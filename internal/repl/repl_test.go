@@ -13,6 +13,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestParseCommandModelWithProvider(t *testing.T) {
+	cmd := ParseCommand("/model ollama/gemma4")
+	assert.NotNil(t, cmd)
+	assert.Equal(t, "/model", cmd.Name)
+	assert.Equal(t, []string{"ollama/gemma4"}, cmd.Args)
+}
+
+func TestParseCommandModelBare(t *testing.T) {
+	cmd := ParseCommand("/model gemma4")
+	assert.NotNil(t, cmd)
+	assert.Equal(t, "/model", cmd.Name)
+	assert.Equal(t, []string{"gemma4"}, cmd.Args)
+}
+
+func TestParseCommandModelNoArgs(t *testing.T) {
+	cmd := ParseCommand("/model")
+	assert.NotNil(t, cmd)
+	assert.Equal(t, "/model", cmd.Name)
+	assert.Nil(t, cmd.Args)
+}
+
 func TestParseCommandValid(t *testing.T) {
 	cmd := ParseCommand("/model gemma4")
 	assert.NotNil(t, cmd)
