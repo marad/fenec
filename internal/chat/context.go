@@ -29,7 +29,11 @@ func (ct *ContextTracker) TokenUsage() int {
 }
 
 // ShouldTruncate returns true if token usage exceeds the threshold.
+// Returns false when maxTokens is 0 (not set), meaning no limit is configured.
 func (ct *ContextTracker) ShouldTruncate() bool {
+	if ct.maxTokens == 0 {
+		return false
+	}
 	return ct.TokenUsage() >= int(float64(ct.maxTokens)*ct.threshold)
 }
 
