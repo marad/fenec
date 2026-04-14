@@ -598,9 +598,10 @@ func (r *REPL) handleModelCommand(args []string) {
 		r.activeProvider = providerName
 		r.conv.SetModel(modelName)
 
-		// Update context length from new provider.
-		ctx := context.Background()
-		if ctxLen, err := newProvider.GetContextLength(ctx, modelName); err == nil && ctxLen > 0 {
+		// Update context length from new provider (5s timeout matches listModels convention).
+		ctxTimeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if ctxLen, err := newProvider.GetContextLength(ctxTimeout, modelName); err == nil && ctxLen > 0 {
 			r.conv.ContextLength = ctxLen
 		}
 
@@ -611,9 +612,10 @@ func (r *REPL) handleModelCommand(args []string) {
 		modelName := target
 		r.conv.SetModel(modelName)
 
-		// Update context length from current provider.
-		ctx := context.Background()
-		if ctxLen, err := r.provider.GetContextLength(ctx, modelName); err == nil && ctxLen > 0 {
+		// Update context length from current provider (5s timeout matches listModels convention).
+		ctxTimeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if ctxLen, err := r.provider.GetContextLength(ctxTimeout, modelName); err == nil && ctxLen > 0 {
 			r.conv.ContextLength = ctxLen
 		}
 
