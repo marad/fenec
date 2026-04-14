@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: GitHub Models Provider
-status: defining requirements
-stopped_at: —
-last_updated: "2026-04-14T11:29:14.294Z"
+status: roadmap complete
+stopped_at: roadmap created, ready for phase 12 planning
+last_updated: "2026-04-14T12:00:00.000Z"
 last_activity: 2026-04-14
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
-  total_plans: 0
+  total_plans: 4
   completed_plans: 0
   percent: 0
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
-**Current focus:** Phase 11 — model-routing (complete)
+**Current focus:** Phase 12 — copilot provider (next)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 12 — Copilot Provider (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-14 — Milestone v1.2 started
+Status: Roadmap complete, ready for planning
+Last activity: 2026-04-14 — Roadmap created for v1.2
 
 ## Performance Metrics
 
