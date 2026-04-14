@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/marad/fenec/internal/model"
 	"github.com/marad/fenec/internal/provider"
@@ -21,8 +22,10 @@ var _ provider.Provider = (*Provider)(nil)
 
 // Provider wraps openai.Provider with GitHub Models base URL and automatic token resolution.
 type Provider struct {
-	inner *openaiProvider.Provider
-	token string
+	inner   *openaiProvider.Provider
+	token   string
+	mu      sync.RWMutex
+	catalog []ghModel
 }
 
 // New creates a Provider using GitHub authentication from the environment or gh CLI.
@@ -54,9 +57,17 @@ func (p *Provider) StreamChat(ctx context.Context, req *provider.ChatRequest, on
 	return p.inner.StreamChat(ctx, req, onToken, onThinking)
 }
 
-// ListModels returns available models. Stub for Phase 12 — replaced in Phase 13 with catalog HTTP call.
+// ListModels returns available models from the GitHub Models catalog.
 func (p *Provider) ListModels(ctx context.Context) ([]string, error) {
-	return p.inner.ListModels(ctx)
+	models, err := p.fetchCatalog(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(models))
+	for i, m := range models {
+		ids[i] = m.ID
+	}
+	return ids, nil
 }
 
 // Ping verifies the provider is reachable by fetching the GitHub Models catalog.
@@ -77,7 +88,17 @@ func (p *Provider) Ping(ctx context.Context) error {
 	return nil
 }
 
-// GetContextLength returns the context window size. Stub for Phase 12 — replaced in Phase 13 with catalog data.
+// GetContextLength returns the context window size from the GitHub Models catalog.
+// Returns 0, nil for unknown models — consistent with the openai provider behavior.
 func (p *Provider) GetContextLength(ctx context.Context, modelName string) (int, error) {
-	return p.inner.GetContextLength(ctx, modelName)
+	models, err := p.fetchCatalog(ctx)
+	if err != nil {
+		return 0, err
+	}
+	for _, m := range models {
+		if m.ID == modelName {
+			return m.Limits.MaxInputTokens, nil
+		}
+	}
+	return 0, nil
 }
