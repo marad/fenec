@@ -1,5 +1,21 @@
 # Milestones
 
+## v1.1 Multi-Provider Support (Shipped: 2026-04-14)
+
+**Phases completed:** 5 phases, 9 plans, 18 tasks
+
+**Key accomplishments:**
+
+- Fenec-owned Message, ToolDefinition, and StreamMetrics types with PropertyType custom JSON marshaling and full round-trip test coverage
+- Full type decoupling from ollama/api -- only internal/chat retains the import as adapter boundary with 4 conversion functions
+- Provider interface with 5 methods and Ollama adapter, moving all Ollama-specific code behind internal/provider/ollama while REPL and main.go consume only the abstract Provider
+- TOML config loading with $ENV_VAR API key resolution, provider registry, and config-driven main.go startup replacing hardcoded Ollama
+- fsnotify config file watcher with 100ms debounce, directory-level watch for editor atomic saves, and main.go reload callback that rebuilds providers on config change
+- OpenAI-compatible Provider adapter with streaming/non-streaming dispatch, tool call argument parsing, and factory wiring via openai-go v3 SDK
+- 26 unit tests for OpenAI adapter covering streaming SSE, non-streaming tool calls, thinking extraction, model listing, ping, metrics, and config factory wiring
+
+---
+
 ## v1.0 Fenec Platform Foundation (Shipped: 2026-04-12)
 
 **Phases completed:** 6 phases, 14 plans, 29 tasks

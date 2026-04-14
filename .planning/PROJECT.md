@@ -2,23 +2,15 @@
 
 ## What This Is
 
-A personal AI assistant platform built in Go with Lua extensibility. Provides a CLI chat interface that connects to local Ollama models (like Gemma 4). The agent can use tools via structured function calling and extend itself by writing Lua scripts that persist as new tools — becoming more capable over time.
+A personal AI assistant platform built in Go with Lua extensibility. Provides a CLI chat interface connecting to multiple LLM providers (Ollama, LM Studio, OpenAI-compatible) through a config-driven provider abstraction with unified tool calling and model routing.
 
 ## Core Value
 
 An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
 
-## Current Milestone: v1.1 Multi-Provider Support
+## Current Milestone: v1.2 (planning)
 
-**Goal:** Enable Fenec to connect to any LLM provider (Ollama, LM Studio, OpenAI) through a config-driven provider abstraction with unified tool calling.
-
-**Target features:**
-- Provider abstraction layer with named providers and type-based protocol selection
-- OpenAI-compatible API client for LM Studio, OpenAI, and other compatible backends
-- Config-driven provider definitions (type, URL, API key, model overrides)
-- `--model provider/model` syntax for unified model selection with provider routing
-- Model discovery from providers with optional config overrides
-- Tool calling support across all provider types
+**Status:** v1.1 shipped 2026-04-14. Ready to plan next milestone.
 
 ## Requirements
 
@@ -33,14 +25,16 @@ An extensible AI agent platform that can grow its own capabilities through self-
 - ✓ Sandboxed Lua runtime with startup loading — v1.0
 - ✓ Self-extension (agent writes its own tools) — v1.0
 - ✓ Built-in file tools with path safety — v1.0
-- ✓ Existing Ollama workflow works with zero config changes after type decoupling — v1.1 Phase 7
-- ✓ Provider abstraction with Ollama adapter — v1.1 Phase 8
-- ✓ Config-driven provider definitions with TOML + hot-reload — v1.1 Phase 9
-- ✓ OpenAI-compatible API client with tool calling (LM Studio, OpenAI cloud) — v1.1 Phase 10
+- ✓ Existing Ollama workflow works with zero config changes after type decoupling — v1.1
+- ✓ Provider abstraction with Ollama adapter — v1.1
+- ✓ Config-driven provider definitions with TOML + hot-reload — v1.1
+- ✓ OpenAI-compatible API client with tool calling (LM Studio, OpenAI cloud) — v1.1
+- ✓ `--model provider/model` unified model selection with provider routing — v1.1
+- ✓ `/model` REPL command with provider-grouped model listing — v1.1
 
 ### Active
-- [ ] Unified `--model provider/model` selection with provider routing
-- [ ] Model discovery from providers
+
+_(Define with `/gsd-new-milestone`)_
 
 ### Out of Scope
 
@@ -63,7 +57,7 @@ An extensible AI agent platform that can grow its own capabilities through self-
 
 - **Language**: Go — performance, single binary deployment, strong concurrency
 - **Scripting**: Lua 5.1 (gopher-lua) — embedded scripting for tool extensibility
-- **Models**: Ollama local models — no cloud dependencies
+- **Models**: Ollama local models + any OpenAI-compatible API — flexible local or cloud
 - **Interface**: CLI — simple REPL to start
 
 ## Key Decisions
@@ -76,6 +70,11 @@ An extensible AI agent platform that can grow its own capabilities through self-
 | ApproverFunc callback pattern | Deferred approval logic allows reuse across tool types | ✓ Good — used by shell, write, edit |
 | Registry with provenance | Track built-in vs Lua tools for safe self-extension | ✓ Good — prevents overwriting built-ins |
 | Path deny list + CWD boundary | Layered safety for file operations | ✓ Good — deny-before-approve ordering |
+| `internal/model` canonical types | Project-owned types decouple all packages from provider SDKs | ✓ Good — single import boundary at adapter |
+| `provider.Provider` interface | 5-method interface enables adding providers without changing core | ✓ Good — OpenAI adapter proved the pattern |
+| openai-go v3 SDK | Official OpenAI Go client for OpenAI-compatible adapters | ✓ Good — full streaming + tool call support |
+| `provider/model` syntax via `/` delimiter | Natural, URL-inspired routing syntax for CLI and REPL | ✓ Good — `/model` listing + `--model` flag consistent |
+| Hot-reload with fsnotify + debounce | Live config changes without restart | ✓ Good — 100ms debounce handles editor atomic saves |
 
 ## Evolution
 
@@ -95,4 +94,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-13 after Phase 10 completion*
+*Last updated: 2026-04-14 after v1.1 milestone*
