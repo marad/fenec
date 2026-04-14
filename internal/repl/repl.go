@@ -505,12 +505,75 @@ func (r *REPL) ApproveCommand(command string) bool {
 	return response == "y" || response == "yes"
 }
 
+// providerModels holds the result of listing models from a single provider.
+type providerModels struct {
+	name   string
+	models []string
+	err    error
+}
+
+// listModels fetches models from all registered providers in parallel and prints
+// them grouped by provider, with the active model marked by an arrow.
+func (r *REPL) listModels() {
+	if r.providerRegistry == nil {
+		fmt.Fprintln(r.rl.Stdout(), render.FormatError("Provider registry not available."))
+		return
+	}
+
+	names := r.providerRegistry.Names()
+	if len(names) == 0 {
+		fmt.Fprintln(r.rl.Stdout(), "No providers configured.")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	results := make([]providerModels, len(names))
+	var wg sync.WaitGroup
+
+	for i, name := range names {
+		wg.Add(1)
+		go func(idx int, providerName string) {
+			defer wg.Done()
+			results[idx].name = providerName
+			p, ok := r.providerRegistry.Get(providerName)
+			if !ok {
+				results[idx].err = fmt.Errorf("provider not found")
+				return
+			}
+			models, err := p.ListModels(ctx)
+			results[idx].models = models
+			results[idx].err = err
+		}(i, name)
+	}
+
+	wg.Wait()
+
+	for i, res := range results {
+		fmt.Fprintln(r.rl.Stdout(), render.FormatProviderHeader(res.name))
+		if res.err != nil {
+			fmt.Fprintln(r.rl.Stdout(), render.FormatProviderError(res.name, res.err.Error()))
+		} else if len(res.models) == 0 {
+			fmt.Fprintln(r.rl.Stdout(), "  (no models)")
+		} else {
+			for _, m := range res.models {
+				active := res.name == r.activeProvider && m == r.conv.Model
+				fmt.Fprintln(r.rl.Stdout(), render.FormatModelEntry(m, active))
+			}
+		}
+		if i < len(results)-1 {
+			fmt.Fprintln(r.rl.Stdout())
+		}
+	}
+}
+
 // handleModelCommand implements the /model command.
-// With no args: delegates to the multi-provider listing (Plan 02 fills this out).
+// With no args: shows models grouped by provider across all registered providers.
 // With args: switches provider and/or model based on "provider/model" or bare "model" syntax.
 func (r *REPL) handleModelCommand(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(r.rl.Stdout(), "Use /model <name> or /model provider/model to switch. No args listing coming soon.")
+		r.listModels()
 		return
 	}
 
