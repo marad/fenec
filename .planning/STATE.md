@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: GitHub Models Provider
 status: planning
-stopped_at: Completed 12-02-PLAN.md
-last_updated: "2026-04-14T13:00:05.697Z"
-last_activity: 2026-04-14 — Roadmap created for v1.2
+stopped_at: Completed 13-01-PLAN.md
+last_updated: "2026-04-14T13:26:37.145Z"
+last_activity: 2026-04-14 — Phase 12 executed and verified
 progress:
   total_phases: 2
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 100
+  total_plans: 4
+  completed_plans: 3
+  percent: 75
 ---
 
 # Project State
@@ -59,6 +59,7 @@ Last activity: 2026-04-14 — Phase 12 executed and verified
 | Phase 10-openai-compatible-client P02 | 5min | 2 tasks | 2 files |
 | Phase 12 P01 | 1min | 2 tasks | 3 files |
 | Phase 12 P02 | 2min | 3 tasks | 2 files |
+| Phase 13-model-catalog P01 | 3min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,7 @@ Recent decisions affecting current work:
 - [Phase 12]: Token resolution uses injectable functions (resolveTokenWith) for testability
 - [Phase 12]: ExitError mocks use real subprocess (sh -c exit N) since exec.ExitError cannot be constructed directly
 - [Phase 12]: TestNewWithoutTokenFailsWhenNoGh skips gracefully when gh CLI is installed and authenticated
+- [Phase 13-model-catalog]: fetchCatalogFrom(ctx, url) pattern for testability; double-checked locking with sync.RWMutex for lazy catalog cache; GetContextLength returns 0 for unknown models
 
 ### Pending Todos
 
@@ -112,5 +114,5 @@ None yet.
 ## Session Continuity
 
 Last activity: 2026-04-14
-Stopped at: Completed 12-02-PLAN.md
+Stopped at: Completed 13-01-PLAN.md
 Resume file: None

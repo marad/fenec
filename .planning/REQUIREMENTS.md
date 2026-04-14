@@ -12,9 +12,9 @@
 - [x] **COPILOT-03**: Provider returns a clear, actionable error if `gh` CLI is not installed or the user is not authenticated
 - [x] **COPILOT-04**: Chat completions and streaming work via `https://models.github.ai/inference` using the existing openai-go/v3 SDK
 - [x] **COPILOT-05**: Tool calling works identically to the existing `openai` provider (same format, no changes to tool system)
-- [ ] **COPILOT-06**: `ListModels()` returns the full GitHub Models catalog via a direct HTTP call to `https://models.github.ai/v1/models`
-- [ ] **COPILOT-07**: `GetContextLength()` returns real values sourced from the catalog `limits.max_input_tokens` field
-- [ ] **COPILOT-08**: `Ping()` validates connectivity and auth via a catalog fetch (no chat request needed)
+- [x] **COPILOT-06**: `ListModels()` returns the full GitHub Models catalog via a direct HTTP call to `https://models.github.ai/v1/models`
+- [x] **COPILOT-07**: `GetContextLength()` returns real values sourced from the catalog `limits.max_input_tokens` field
+- [x] **COPILOT-08**: `Ping()` validates connectivity and auth via a catalog fetch (no chat request needed)
 - [x] **COPILOT-09**: Default model for the `copilot` provider is `gpt-4o-mini` (Copilot Free compatible, supports tool calling)
 - [ ] **COPILOT-10**: `/model` REPL command lists models grouped under `copilot/*` alongside other providers
 
@@ -39,9 +39,9 @@
 | COPILOT-03 | Phase 12 | Complete |
 | COPILOT-04 | Phase 12 | Complete |
 | COPILOT-05 | Phase 12 | Complete |
-| COPILOT-06 | Phase 13 | Pending |
-| COPILOT-07 | Phase 13 | Pending |
-| COPILOT-08 | Phase 13 | Pending |
+| COPILOT-06 | Phase 13 | Complete |
+| COPILOT-07 | Phase 13 | Complete |
+| COPILOT-08 | Phase 13 | Complete |
 | COPILOT-09 | Phase 12 | Complete |
 | COPILOT-10 | Phase 13 | Pending |
 

@@ -82,4 +82,4 @@ Plans:
 | 10. OpenAI-Compatible Client | v1.1 | 2/2 | Complete | 2026-04-13 |
 | 11. Model Routing | v1.1 | 2/2 | Complete | 2026-04-14 |
 | 12. Copilot Provider | v1.2 | 2/2 | Complete   | 2026-04-14 |
-| 13. Model Catalog | v1.2 | 0/2 | Planned | - |
+| 13. Model Catalog | v1.2 | 1/2 | In Progress|  |
