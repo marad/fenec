@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-04-12)
 
 ## Current Position
 
-Phase: 12 — Copilot Provider (not started)
+Phase: 13 — Model Catalog (next)
 Plan: —
-Status: Roadmap complete, ready for planning
-Last activity: 2026-04-14 — Roadmap created for v1.2
+Status: Phase 12 complete, Phase 13 ready to plan
+Last activity: 2026-04-14 — Phase 12 executed and verified
 
 ## Performance Metrics
 
