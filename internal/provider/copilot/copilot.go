@@ -3,6 +3,7 @@ package copilot
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/marad/fenec/internal/model"
 	"github.com/marad/fenec/internal/provider"
@@ -11,6 +12,7 @@ import (
 
 const (
 	baseURL      = "https://models.github.ai/inference"
+	catalogURL   = "https://models.github.ai/v1/models"
 	defaultModel = "openai/gpt-4o-mini"
 )
 
@@ -20,6 +22,7 @@ var _ provider.Provider = (*Provider)(nil)
 // Provider wraps openai.Provider with GitHub Models base URL and automatic token resolution.
 type Provider struct {
 	inner *openaiProvider.Provider
+	token string
 }
 
 // New creates a Provider using GitHub authentication from the environment or gh CLI.
@@ -33,7 +36,7 @@ func New() (*Provider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("copilot: creating openai client: %w", err)
 	}
-	return &Provider{inner: inner}, nil
+	return &Provider{inner: inner, token: token}, nil
 }
 
 // Name returns the provider identifier.
@@ -56,9 +59,22 @@ func (p *Provider) ListModels(ctx context.Context) ([]string, error) {
 	return p.inner.ListModels(ctx)
 }
 
-// Ping verifies the provider is reachable. Stub for Phase 12 — replaced in Phase 13 with catalog fetch.
+// Ping verifies the provider is reachable by fetching the GitHub Models catalog.
 func (p *Provider) Ping(ctx context.Context) error {
-	return p.inner.Ping(ctx)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, catalogURL, nil)
+	if err != nil {
+		return fmt.Errorf("copilot: creating ping request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+p.token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("copilot: cannot reach GitHub Models API: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("copilot: GitHub Models API returned %s", resp.Status)
+	}
+	return nil
 }
 
 // GetContextLength returns the context window size. Stub for Phase 12 — replaced in Phase 13 with catalog data.
