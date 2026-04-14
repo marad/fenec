@@ -29,10 +29,10 @@ Requirements for multi-provider support. Each maps to roadmap phases.
 
 ### Model Routing
 
-- [ ] **ROUT-01**: User can select a model with `--model provider/model` to target a specific provider
-- [ ] **ROUT-02**: User can use `--model modelname` (no prefix) to use the default provider
-- [ ] **ROUT-03**: User can list available models grouped by provider via `/model`
-- [ ] **ROUT-04**: User can discover models from each provider automatically (fetched from provider APIs)
+- [x] **ROUT-01**: User can select a model with `--model provider/model` to target a specific provider
+- [x] **ROUT-02**: User can use `--model modelname` (no prefix) to use the default provider
+- [x] **ROUT-03**: User can list available models grouped by provider via `/model`
+- [x] **ROUT-04**: User can discover models from each provider automatically (fetched from provider APIs)
 
 ## Future Requirements
 
@@ -72,10 +72,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONF-02 | Phase 9 | Complete |
 | CONF-03 | Phase 9 | Complete |
 | CONF-04 | Phase 9 | Complete |
-| ROUT-01 | Phase 11 | Pending |
-| ROUT-02 | Phase 11 | Pending |
-| ROUT-03 | Phase 11 | Pending |
-| ROUT-04 | Phase 11 | Pending |
+| ROUT-01 | Phase 11 | Complete |
+| ROUT-02 | Phase 11 | Complete |
+| ROUT-03 | Phase 11 | Complete |
+| ROUT-04 | Phase 11 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 15 total
