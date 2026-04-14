@@ -16,7 +16,7 @@
 - [x] **COPILOT-07**: `GetContextLength()` returns real values sourced from the catalog `limits.max_input_tokens` field
 - [x] **COPILOT-08**: `Ping()` validates connectivity and auth via a catalog fetch (no chat request needed)
 - [x] **COPILOT-09**: Default model for the `copilot` provider is `gpt-4o-mini` (Copilot Free compatible, supports tool calling)
-- [ ] **COPILOT-10**: `/model` REPL command lists models grouped under `copilot/*` alongside other providers
+- [x] **COPILOT-10**: `/model` REPL command lists models grouped under `copilot/*` alongside other providers
 
 ## Out of Scope
 
@@ -43,7 +43,7 @@
 | COPILOT-07 | Phase 13 | Complete |
 | COPILOT-08 | Phase 13 | Complete |
 | COPILOT-09 | Phase 12 | Complete |
-| COPILOT-10 | Phase 13 | Pending |
+| COPILOT-10 | Phase 13 | Complete |
 
 **Coverage:**
 - v1.2 requirements: 10 total

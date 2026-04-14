@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: GitHub Models Provider
 status: planning
-stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-04-14T13:26:37.145Z"
+stopped_at: Completed 13-02-PLAN.md
+last_updated: "2026-04-14T13:33:28.525Z"
 last_activity: 2026-04-14 — Phase 12 executed and verified
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
-  percent: 75
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -60,6 +60,7 @@ Last activity: 2026-04-14 — Phase 12 executed and verified
 | Phase 12 P01 | 1min | 2 tasks | 3 files |
 | Phase 12 P02 | 2min | 3 tasks | 2 files |
 | Phase 13-model-catalog P01 | 3min | 3 tasks | 3 files |
+| Phase 13-model-catalog P02 | 3min | 4 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,9 @@ Recent decisions affecting current work:
 - [Phase 12]: ExitError mocks use real subprocess (sh -c exit N) since exec.ExitError cannot be constructed directly
 - [Phase 12]: TestNewWithoutTokenFailsWhenNoGh skips gracefully when gh CLI is installed and authenticated
 - [Phase 13-model-catalog]: fetchCatalogFrom(ctx, url) pattern for testability; double-checked locking with sync.RWMutex for lazy catalog cache; GetContextLength returns 0 for unknown models
+- [Phase 13-model-catalog]: Removed net/http import from copilot.go — all HTTP lives in catalog.go
+- [Phase 13-model-catalog]: Ping tests use cache-seeding pattern (fetchCatalogFrom then Ping) for testability
+- [Phase 13-model-catalog]: /model REPL grouping confirmed correct with copilot provider — no changes needed
 
 ### Pending Todos
 
@@ -114,5 +118,5 @@ None yet.
 ## Session Continuity
 
 Last activity: 2026-04-14
-Stopped at: Completed 13-01-PLAN.md
+Stopped at: Completed 13-02-PLAN.md
 Resume file: None

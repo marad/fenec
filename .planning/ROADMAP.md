@@ -38,7 +38,7 @@ See `.planning/milestones/v1.1-ROADMAP.md` for full phase details.
 ## v1.2 GitHub Models Provider (Phases 12-13)
 
 - [x] **Phase 12: Copilot Provider** — Token resolution, openai-go wrapper, config integration (completed 2026-04-14)
-- [ ] **Phase 13: Model Catalog** — Custom HTTP listing, context length from catalog, Ping, `/model` grouping
+- [x] **Phase 13: Model Catalog** — Custom HTTP listing, context length from catalog, Ping, `/model` grouping (completed 2026-04-14)
 
 ### Phase 12: Copilot Provider
 **Goal**: Users can chat with GitHub Models using `type = "copilot"` in config, with automatic auth from `gh` CLI
@@ -82,4 +82,4 @@ Plans:
 | 10. OpenAI-Compatible Client | v1.1 | 2/2 | Complete | 2026-04-13 |
 | 11. Model Routing | v1.1 | 2/2 | Complete | 2026-04-14 |
 | 12. Copilot Provider | v1.2 | 2/2 | Complete   | 2026-04-14 |
-| 13. Model Catalog | v1.2 | 1/2 | In Progress|  |
+| 13. Model Catalog | v1.2 | 2/2 | Complete   | 2026-04-14 |
