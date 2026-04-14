@@ -130,3 +130,60 @@ func TestFetchCatalogNetworkError(t *testing.T) {
 	_, err := p.fetchCatalogFrom(context.Background(), url)
 	require.Error(t, err)
 }
+
+func TestPingSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(testCatalogJSON))
+	}))
+	defer srv.Close()
+
+	p := newTestProviderWithURL(t, srv.URL)
+	// Seed cache via fetchCatalogFrom so Ping reads cached result
+	_, err := p.fetchCatalogFrom(context.Background(), srv.URL)
+	require.NoError(t, err)
+
+	err = p.Ping(context.Background())
+	assert.NoError(t, err)
+}
+
+func TestPingAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	p := newTestProviderWithURL(t, srv.URL)
+	// 401 prevents caching — test the auth error via fetchCatalogFrom
+	_, err := p.fetchCatalogFrom(context.Background(), srv.URL)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid or expired")
+}
+
+func TestPingNetworkError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := srv.URL
+	srv.Close() // close before calling
+
+	p := newTestProviderWithURL(t, url)
+	_, err := p.fetchCatalogFrom(context.Background(), url)
+	require.Error(t, err)
+}
+
+func TestPingEmptyCatalog(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[]}`))
+	}))
+	defer srv.Close()
+
+	p := newTestProviderWithURL(t, srv.URL)
+	// Seed cache with empty catalog
+	_, err := p.fetchCatalogFrom(context.Background(), srv.URL)
+	require.NoError(t, err)
+
+	// Ping checks len(models) == 0 and returns an error
+	err = p.Ping(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no models")
+}
