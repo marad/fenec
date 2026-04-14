@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Multi-Provider Support
-status: v1.1 milestone complete
-stopped_at: Completed 10-02-PLAN.md
-last_updated: "2026-04-14T08:44:28.718Z"
+milestone: v1.2
+milestone_name: GitHub Models Provider
+status: defining requirements
+stopped_at: —
+last_updated: "2026-04-14T11:29:14.294Z"
 last_activity: 2026-04-14
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,8 +25,10 @@ See: .planning/PROJECT.md (updated 2026-04-12)
 
 ## Current Position
 
-Phase: 11 (model-routing) — COMPLETE
-Plan: 2 of 2
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-14 — Milestone v1.2 started
 
 ## Performance Metrics
 

@@ -8,9 +8,17 @@ A personal AI assistant platform built in Go with Lua extensibility. Provides a 
 
 An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
 
-## Current Milestone: v1.2 (planning)
+## Current Milestone: v1.2 GitHub Models Provider
 
-**Status:** v1.1 shipped 2026-04-14. Ready to plan next milestone.
+**Goal:** Add a dedicated `copilot` provider type connecting to the GitHub Models API, authenticated through the existing `gh` CLI session — no PAT management required.
+
+**Target features:**
+- `type = "copilot"` config with no url/api_key needed
+- Auth via `gh auth token` at provider init (requires `gh` CLI authenticated)
+- Clear error if `gh` not installed or not authenticated
+- Full tool calling + streaming (OpenAI-compatible wrapper)
+- Model listing via /models endpoint
+- `/model` groups models under `copilot/*`
 
 ## Requirements
 
