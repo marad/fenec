@@ -119,7 +119,9 @@ Plans:
   2. `--model` flag overrides profile's model setting (priority: `--model` > profile > config default)
   3. `--system` and `--profile` compose: `--system` overrides prompt while profile's model still applies
   4. Invalid profile name produces clear error message
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 18-01-PLAN.md — --profile/-P flag with model/prompt precedence chains
 
 ### Phase 19: Profile Subcommands
 **Goal**: User can manage profiles through dedicated CLI subcommands without interfering with normal REPL operation
