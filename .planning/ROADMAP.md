@@ -158,4 +158,4 @@ Plans:
 | 16. Profile Package | v1.3 | 1/1 | Complete   | 2026-04-15 |
 | 17. System Flag | v1.3 | 1/1 | Complete    | 2026-04-15 |
 | 18. Profile Flag | v1.3 | 1/1 | Complete    | 2026-04-15 |
-| 19. Profile Subcommands | v1.3 | 1/1 | Complete   | 2026-04-15 |
+| 19. Profile Subcommands | v1.3 | 1/1 | Complete    | 2026-04-15 |
