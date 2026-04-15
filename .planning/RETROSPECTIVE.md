@@ -129,6 +129,51 @@
 
 ---
 
+## Milestone: v1.3 — Profiles & Config
+
+**Shipped:** 2026-04-15
+**Phases:** 6 | **Plans:** 6 | **Commits:** 47
+
+### What Was Built
+- `~/.config/fenec` config path standardization with automatic macOS migration from `~/Library/Application Support/fenec`
+- `/clear` REPL command with auto-save, ContextTracker.Reset(), and token tracking reset
+- `internal/profile` package — TOML frontmatter parsing, Load/List/Parse API, path traversal protection
+- `--system/-s` flag for ad-hoc system prompt override per invocation
+- `--profile/-P` flag with three-layer precedence chains (model: `--model` > profile > config; prompt: `--system` > profile > config)
+- `fenec profile list/create/edit` subcommands via `internal/profilecmd` package with `$EDITOR` integration
+
+### What Worked
+- `pflag.CommandLine.Changed("model")` guard was the critical insight for correct precedence — prevents profile model from leaking when user explicitly sets `--model`
+- Pre-pflag `os.Args` dispatch for subcommands avoided needing Cobra for just 3 commands — clean and simple
+- Hugo-style `+++`-delimited TOML frontmatter is familiar to developers and trivial to parse
+- Dir-injection pattern in profilecmd made testing possible without touching real filesystem config
+- Discuss phase with 7 decisions (D-01 through D-07) caught the `--model` + profile interaction edge cases before any code was written
+
+### What Was Inefficient
+- Requirements for Phases 14 and 15 (CFG-01 through CFG-03, CONV-01 through CONV-03) were not checked off in REQUIREMENTS.md despite both phases being complete — discovered during milestone completion. Executors should update both the traceability table AND the checkbox list.
+- Phase 15 progress table showed "0/1" plans complete despite being fully shipped — stale tracking artifact from a prior session
+- UI gate regex matching "ui" in words like "profile" caused false positives — should use word-boundary matching
+
+### Patterns Established
+- Three-layer precedence for flags: CLI flag > profile setting > config default, using `pflag.Changed()` to distinguish explicit from default
+- Profile file format: `+++`-delimited TOML frontmatter with `model` (provider/model syntax) + markdown body as system prompt
+- Pre-pflag subcommand dispatch: `os.Args[1]` check before `pflag.Parse()` for subcommand routing
+- `$EDITOR` integration: `strings.Fields()` to support multi-word editors, fallback to `vi`
+- Path traversal protection: `strings.ContainsAny(name, "/\\.")` for profile names
+
+### Key Lessons
+1. Flag precedence design deserves a dedicated discuss-phase decision — the `--model` + `--profile` interaction had 3 subtle edge cases that were only caught through structured questioning
+2. Executors need to update BOTH requirement checkboxes AND traceability table status — one without the other creates confusion at milestone completion
+3. Empty-body fallthrough (D-05) is important for model-only profiles — profiles that only set a model should not override the default system prompt
+4. `$EDITOR` with `strings.Fields()` handles editors like `code --wait` correctly — simple string split is better than shell parsing
+
+### Cost Observations
+- Model mix: ~60% opus (planning + execution for Phases 17-19), ~40% sonnet (research + verification)
+- Sessions: Multiple (Phases 14-15 in prior session, 16 in another, 17-19 in this session)
+- Notable: Phase 18 discuss phase was the most valuable — 7 decisions prevented 3 implementation bugs
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -138,6 +183,7 @@
 | v1.0 | 102 | 6 | First milestone — established GSD workflow patterns |
 | v1.1 | 57 | 5 | Provider abstraction layer; introduced milestone audit before complete |
 | v1.2 | 15 | 2 | Delegation pattern; fastest milestone — built on v1.1 provider system |
+| v1.3 | 47 | 6 | Profiles & config; discuss phase proved critical for flag precedence |
 
 ### Cumulative Quality
 
@@ -146,6 +192,7 @@
 | v1.0 | 6,970 | 15+ | 7 |
 | v1.1 | 10,335 (4,499 prod + 5,836 test) | 20+ | 10 |
 | v1.2 | ~11,300 | 22+ | 11 |
+| v1.3 | ~12,400 | 24+ | 13 |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -154,3 +201,5 @@
 3. Generate VERIFICATION.md immediately after execution — retroactive generation causes audit overhead
 4. Compile-time interface guards are cheap and catch real bugs early
 5. Delegation wrapping pattern avoids duplicating protocol-level code — prefer `inner.Method()` over re-implementing
+6. Flag precedence requires explicit `Changed()` guards — implicit defaults silently override intended behavior
+7. Pre-pflag dispatch is sufficient for a handful of subcommands — Cobra overhead not justified until 5+ subcommands
