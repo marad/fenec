@@ -112,7 +112,6 @@ Flags:
 			os.Exit(1)
 		}
 	}
-	_ = prof // Used in model/prompt precedence chains below.
 
 	// Start config file watcher for hot-reload (CONF-04).
 	configWatcher, err := config.NewConfigWatcher(configPath, func() {
@@ -150,8 +149,30 @@ Flags:
 	}
 	activeProviderName := providerRegistry.DefaultName()
 
+	// Apply profile's model and provider as intermediate defaults (FLAG-02, FLAG-03).
+	// Only when --model was NOT explicitly passed — per D-01, --model is a complete override.
+	modelExplicit := pflag.CommandLine.Changed("model")
+	if prof != nil && !modelExplicit {
+		if prof.Provider != "" {
+			namedProvider, ok := providerRegistry.Get(prof.Provider)
+			if !ok {
+				fmt.Fprintf(os.Stderr, "Profile %q: provider %q not found. Available providers:\n", *profileName, prof.Provider)
+				for _, n := range providerRegistry.Names() {
+					fmt.Fprintf(os.Stderr, "  - %s\n", n)
+				}
+				os.Exit(1)
+			}
+			p = namedProvider
+			activeProviderName = prof.Provider
+		}
+		if prof.ModelName != "" {
+			*modelName = prof.ModelName
+		}
+	}
+
 	// Handle --model flag: support "provider/model" or bare "model" syntax.
-	if *modelName != "" {
+	// Uses modelExplicit (Changed check) to distinguish user --model from profile-set model.
+	if modelExplicit {
 		if idx := strings.Index(*modelName, "/"); idx != -1 {
 			parts := strings.SplitN(*modelName, "/", 2)
 			providerName, modelPart := parts[0], parts[1]
@@ -167,8 +188,9 @@ Flags:
 			activeProviderName = providerName
 			*modelName = modelPart
 		}
-		// If no "/" and cfg.DefaultModel is overridden, just use the flag value as-is.
-	} else if cfg.DefaultModel != "" {
+		// If no "/" just use the flag value as-is (bare model name).
+	} else if *modelName == "" && cfg.DefaultModel != "" {
+		// No --model flag, no profile model — fall back to config default.
 		*modelName = cfg.DefaultModel
 	}
 
@@ -194,9 +216,13 @@ Flags:
 		defaultModel = models[0]
 	}
 
-	// Load system prompt — --system flag overrides config file (per D-03).
+	// Load system prompt — three-layer precedence: --system > profile > config default.
+	// Per D-02: each layer completely replaces the one below (no blending).
+	// Per D-03/FLAG-04: --system and --profile compose — --system overrides prompt,
+	// profile's model still applies.
 	var systemPrompt string
 	if *systemFile != "" {
+		// Layer 1: --system flag (highest priority).
 		data, err := os.ReadFile(*systemFile)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, render.FormatError(
@@ -204,7 +230,12 @@ Flags:
 			os.Exit(1)
 		}
 		systemPrompt = string(data)
+	} else if prof != nil && prof.SystemPrompt != "" {
+		// Layer 2: profile's system prompt (middle priority, per D-04).
+		// Per D-05: empty body means "no prompt opinion" — fall through to config default.
+		systemPrompt = prof.SystemPrompt
 	} else {
+		// Layer 3: config default system.md (lowest priority).
 		var err error
 		systemPrompt, err = config.LoadSystemPrompt()
 		if err != nil {
