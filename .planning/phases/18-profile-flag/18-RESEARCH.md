@@ -368,7 +368,7 @@ Flags:
 
 **Note:** A1 is standard pflag API behavior but tagged ASSUMED because it wasn't runtime-verified in this session. The API is well-documented in spf13/pflag.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should `--profile` with `--model provider/model` syntax override both provider AND model from profile?**
    - What we know: D-01 says `--model` is a complete override. The existing `--model` block already handles `provider/model` splitting.
