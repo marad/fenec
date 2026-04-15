@@ -52,6 +52,10 @@ Flags:
 		os.Exit(0)
 	}
 
+	// Migrate legacy macOS config path before anything else (CFG-02).
+	// Must run BEFORE ConfigDir() to prevent fresh-config-on-new-path race.
+	config.MigrateIfNeeded()
+
 	// Detect whether stdin is a terminal (interactive) or a pipe/redirect.
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
 
