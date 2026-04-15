@@ -1,8 +1,11 @@
 package config
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 const (
@@ -41,17 +44,76 @@ return {
 Rules: the script must return a table (not call a function). The table must have name (string), description (string), and execute (function). Parameters is optional. The execute function receives an args table and must return a string.`
 
 // ConfigDir returns the fenec configuration directory path.
-// On Linux: ~/.config/fenec/
-// On macOS: ~/Library/Application Support/fenec/
+// Always returns ~/.config/fenec on all platforms (per CFG-01).
 func ConfigDir() (string, error) {
-	base, err := os.UserConfigDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, AppName), nil
+	return filepath.Join(home, ".config", "fenec"), nil
 }
 
-// LoadSystemPrompt reads the system prompt from ~/.config/fenec/system.md.
+// legacyConfigDir returns the old macOS config path, or empty string on non-darwin.
+func legacyConfigDir() string {
+	if runtime.GOOS != "darwin" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "Library", "Application Support", "fenec")
+}
+
+// MigrateIfNeeded migrates config data from the legacy macOS path
+// (~/Library/Application Support/fenec) to the new path (~/.config/fenec).
+// It is a no-op on non-macOS platforms or if no legacy data exists.
+// Prints a confirmation message to stderr on successful migration (per CFG-02, CFG-03).
+func MigrateIfNeeded() {
+	legacy := legacyConfigDir()
+	if legacy == "" {
+		return // Not macOS, nothing to migrate
+	}
+
+	newDir, err := ConfigDir()
+	if err != nil {
+		return // Can't determine new path, skip silently
+	}
+
+	doMigrate(legacy, newDir, os.Stderr)
+}
+
+// doMigrate performs the actual directory migration from legacy to newDir.
+// Exported to tests via package-private access. Accepts io.Writer for testable stderr output.
+// Skips silently if: legacy doesn't exist, newDir already exists, or rename fails.
+func doMigrate(legacy, newDir string, w io.Writer) {
+	// Check if legacy directory exists.
+	if _, err := os.Stat(legacy); os.IsNotExist(err) {
+		return // No legacy data, nothing to migrate
+	}
+
+	// Don't overwrite if new path already exists.
+	if _, err := os.Stat(newDir); err == nil {
+		return // New path exists, don't clobber
+	}
+
+	// Ensure parent directory (~/.config/) exists with standard permissions.
+	if err := os.MkdirAll(filepath.Dir(newDir), 0755); err != nil {
+		fmt.Fprintf(w, "fenec: failed to create config directory: %v\n", err)
+		return
+	}
+
+	// Atomic rename — instant on same APFS volume, no partial state risk.
+	if err := os.Rename(legacy, newDir); err != nil {
+		fmt.Fprintf(w, "fenec: failed to migrate config: %v\n", err)
+		return
+	}
+
+	// CFG-03: User feedback on stderr.
+	fmt.Fprintf(w, "fenec: migrated config from %s to %s\n", legacy, newDir)
+}
+
+// LoadSystemPrompt reads the system prompt from {ConfigDir}/system.md.
 // Per D-15: If the file doesn't exist, returns a sensible default.
 // Returns error only for permission or I/O issues (not for missing file).
 func LoadSystemPrompt() (string, error) {

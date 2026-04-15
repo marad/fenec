@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,15 +11,8 @@ import (
 )
 
 func TestLoadSystemPromptDefault(t *testing.T) {
-	// Set up a temp dir with no system.md file.
 	tmpDir := t.TempDir()
-	if runtime.GOOS == "linux" {
-		t.Setenv("XDG_CONFIG_HOME", tmpDir)
-	} else {
-		// On macOS, UserConfigDir uses ~/Library/Application Support
-		// which we can't easily override, so we skip the env override.
-		t.Setenv("XDG_CONFIG_HOME", tmpDir)
-	}
+	t.Setenv("HOME", tmpDir)
 
 	prompt, err := LoadSystemPrompt()
 	assert.NoError(t, err)
@@ -31,10 +22,10 @@ func TestLoadSystemPromptDefault(t *testing.T) {
 
 func TestLoadSystemPromptFromFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("HOME", tmpDir)
 
-	// Create the fenec config directory and system.md file.
-	fenecDir := filepath.Join(tmpDir, "fenec")
+	// Create the fenec config directory and system.md file at the NEW path.
+	fenecDir := filepath.Join(tmpDir, ".config", "fenec")
 	require.NoError(t, os.MkdirAll(fenecDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(fenecDir, "system.md"), []byte("Custom prompt"), 0644))
 
@@ -152,11 +143,11 @@ func TestDoMigrate_CreatesParentDir(t *testing.T) {
 
 func TestHistoryFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("HOME", tmpDir)
 
 	path, err := HistoryFile()
 	require.NoError(t, err)
-	assert.True(t, filepath.Base(path) == "history", "HistoryFile should end with 'history', got: %s", path)
+	assert.Equal(t, filepath.Join(tmpDir, ".config", "fenec", "history"), path)
 
 	// Verify the parent directory was created.
 	parentDir := filepath.Dir(path)
@@ -167,11 +158,11 @@ func TestHistoryFile(t *testing.T) {
 
 func TestSessionDirCreatesDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("HOME", tmpDir)
 
 	dir, err := SessionDir()
 	require.NoError(t, err)
-	assert.Contains(t, dir, "sessions")
+	assert.Equal(t, filepath.Join(tmpDir, ".config", "fenec", "sessions"), dir)
 
 	// Verify directory exists.
 	info, err := os.Stat(dir)
@@ -180,18 +171,21 @@ func TestSessionDirCreatesDirectory(t *testing.T) {
 }
 
 func TestToolsDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	dir, err := ToolsDir()
 	require.NoError(t, err)
-	assert.True(t, strings.HasSuffix(dir, filepath.Join("fenec", "tools")),
-		"ToolsDir should end with fenec/tools, got: %s", dir)
+	assert.Equal(t, filepath.Join(tmpDir, ".config", "fenec", "tools"), dir)
 }
 
 func TestToolsDirDoesNotCreate(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("HOME", tmpDir)
 
 	dir, err := ToolsDir()
 	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(tmpDir, ".config", "fenec", "tools"), dir)
 	// The directory should NOT have been created by ToolsDir.
 	_, statErr := os.Stat(dir)
 	assert.True(t, os.IsNotExist(statErr), "ToolsDir should not create the directory")
