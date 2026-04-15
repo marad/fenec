@@ -16,6 +16,7 @@ import (
 	"github.com/marad/fenec/internal/config"
 	feneclua "github.com/marad/fenec/internal/lua"
 	"github.com/marad/fenec/internal/profile"
+	"github.com/marad/fenec/internal/profilecmd"
 	"github.com/marad/fenec/internal/provider"
 	"github.com/marad/fenec/internal/render"
 	"github.com/marad/fenec/internal/repl"
@@ -34,6 +35,13 @@ func main() {
 	systemFile := pflag.StringP("system", "s", "", "File to use as system prompt for this session")
 	profileName := pflag.StringP("profile", "P", "", "Activate a named profile (loads model + prompt)")
 
+	// Profile subcommand dispatch — must run BEFORE pflag.Parse() to avoid
+	// pflag interpreting subcommand args as unknown flags (PROF-04/05/06).
+	if len(os.Args) >= 2 && os.Args[1] == "profile" {
+		profilecmd.Run(os.Args[2:])
+		return
+	}
+
 	pflag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `fenec - AI assistant powered by local Ollama models
 
@@ -44,6 +52,7 @@ Usage:
   echo "prompt" | fenec    Send piped input to model
   fenec --yolo             Auto-approve all tool commands
   fenec --system prompt.md  Use a custom system prompt
+  fenec profile list       List available profiles
 
 Flags:
 `)
