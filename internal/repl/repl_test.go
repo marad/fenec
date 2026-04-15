@@ -131,6 +131,99 @@ func TestHelpTextContainsNewCommands(t *testing.T) {
 	assert.Contains(t, helpText, "/history")
 }
 
+func TestHelpTextContainsClear(t *testing.T) {
+	assert.Contains(t, helpText, "/clear")
+	assert.Contains(t, helpText, "Save and reset")
+}
+
+func TestHandleClearCommandSavesAndResets(t *testing.T) {
+	r, buf := newTestREPL(t, &mockProvider{name: "ollama"}, nil, "ollama", "gemma4")
+
+	dir := t.TempDir()
+	r.store = session.NewStore(dir)
+	r.session = session.NewSession("gemma4")
+	r.tracker = chat.NewContextTracker(8192, 0.85)
+	r.tracker.Update(500, 100)
+	r.baseSystemPrompt = "You are helpful."
+
+	// Populate conversation with user content so HasContent() returns true.
+	r.conv = chat.NewConversation("gemma4", "You are helpful.")
+	r.conv.AddUser("Hello")
+	r.conv.AddAssistant("Hi there!")
+	r.conv.ContextLength = 8192
+	r.conv.Think = true
+
+	// Use a distinct ID so we can detect session replacement (NewSession uses
+	// second-precision timestamps, so within the same second IDs may collide).
+	r.session.ID = "old-session"
+	originalSessionID := r.session.ID
+
+	r.handleClearCommand()
+
+	output := buf.String()
+
+	// CONV-02: session file was saved.
+	assert.Contains(t, output, "Conversation saved:")
+	assert.Contains(t, output, "Session cleared.")
+
+	// CONV-01: conversation reset to initial state (system prompt only).
+	assert.Len(t, r.conv.Messages, 1, "conversation should have only system message")
+	assert.Equal(t, "system", r.conv.Messages[0].Role)
+	assert.Equal(t, "gemma4", r.conv.Model)
+
+	// D-03: new session with different ID.
+	assert.NotEqual(t, originalSessionID, r.session.ID)
+
+	// D-04: tracker reset.
+	assert.Equal(t, 0, r.tracker.TokenUsage())
+
+	// Pitfall 1: Think flag preserved.
+	assert.True(t, r.conv.Think, "Think flag must be preserved across clear")
+
+	// Pitfall 3: ContextLength preserved.
+	assert.Equal(t, 8192, r.conv.ContextLength)
+}
+
+func TestHandleClearCommandSkipsSaveWhenEmpty(t *testing.T) {
+	r, buf := newTestREPL(t, &mockProvider{name: "ollama"}, nil, "ollama", "gemma4")
+
+	dir := t.TempDir()
+	r.store = session.NewStore(dir)
+	r.session = session.NewSession("gemma4")
+	r.baseSystemPrompt = "You are helpful."
+
+	// Conversation with only system message — HasContent() returns false.
+	r.conv = chat.NewConversation("gemma4", "You are helpful.")
+
+	r.handleClearCommand()
+
+	output := buf.String()
+
+	// D-06: only "Session cleared." when no content.
+	assert.Equal(t, "Session cleared.\n", output)
+	assert.NotContains(t, output, "Conversation saved:")
+}
+
+func TestHandleClearCommandPreservesToolDescriptions(t *testing.T) {
+	r, buf := newTestREPL(t, &mockProvider{name: "ollama"}, nil, "ollama", "gemma4")
+	_ = buf
+
+	dir := t.TempDir()
+	r.store = session.NewStore(dir)
+	r.session = session.NewSession("gemma4")
+	r.baseSystemPrompt = "You are helpful."
+
+	// Create a conv with tool descriptions in system prompt.
+	// The registry field is nil — after clear, system prompt should be rebuilt from baseSystemPrompt only.
+	r.conv = chat.NewConversation("gemma4", "You are helpful.\n\n## Available Tools\n\nsome tool desc")
+
+	r.handleClearCommand()
+
+	// CONV-03: system prompt must contain the base system prompt.
+	assert.Equal(t, "You are helpful.", r.conv.Messages[0].Content,
+		"system prompt should be rebuilt from baseSystemPrompt (no registry = no tool desc appended)")
+}
+
 func TestAutoSaveCalledOnce(t *testing.T) {
 	// Create a temp directory for the session store.
 	dir := t.TempDir()

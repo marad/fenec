@@ -165,6 +165,8 @@ func (r *REPL) Run() error {
 				r.handleHistoryCommand()
 			case "/tools":
 				r.handleToolsCommand()
+			case "/clear":
+				r.handleClearCommand()
 			default:
 				fmt.Fprintf(r.rl.Stdout(), "Unknown command: %s. Type /help for available commands.\n", cmd.Name)
 			}
@@ -661,6 +663,72 @@ func (r *REPL) handleSaveCommand() {
 		return
 	}
 	fmt.Fprintf(r.rl.Stdout(), "Session saved: %s (%d messages)\n", r.session.ID, len(r.session.Messages))
+}
+
+// handleClearCommand saves the current conversation (if non-empty) and resets
+// to a fresh state. Implements /clear per CONV-01, CONV-02, CONV-03.
+func (r *REPL) handleClearCommand() {
+	saved := false
+	var savedID string
+	var msgCount int
+
+	// Step 1: Save if conversation has user content (D-01, D-02).
+	if r.store != nil && r.session != nil {
+		r.session.Messages = r.conv.Messages
+		r.session.UpdatedAt = time.Now()
+		if r.tracker != nil {
+			r.session.TokenCount = r.tracker.TokenUsage()
+		}
+		if r.session.HasContent() {
+			if err := r.store.Save(r.session); err != nil {
+				fmt.Fprintln(r.rl.Stdout(), render.FormatError(
+					fmt.Sprintf("Save failed: %v", err)))
+				// Continue with clear despite save failure — don't trap user.
+			} else {
+				saved = true
+				savedID = r.session.ID
+				msgCount = len(r.session.Messages)
+			}
+		}
+	}
+
+	// Capture flags that must survive the reset (Pitfall 1, Pitfall 3).
+	thinkEnabled := r.conv.Think
+	var contextLength int
+	if r.tracker != nil {
+		contextLength = r.tracker.Available()
+	} else {
+		contextLength = r.conv.ContextLength
+	}
+
+	// Step 2: Build full system prompt with tool descriptions (CONV-03).
+	systemPrompt := r.baseSystemPrompt
+	if r.registry != nil {
+		toolDesc := r.registry.Describe()
+		if toolDesc != "" {
+			systemPrompt = systemPrompt + "\n\n## Available Tools\n\n" + toolDesc
+		}
+	}
+
+	// Step 3: Create fresh conversation and session (D-03).
+	r.conv = chat.NewConversation(r.conv.Model, systemPrompt)
+	r.conv.Think = thinkEnabled
+	r.conv.ContextLength = contextLength
+	r.session = session.NewSession(r.conv.Model)
+
+	// Step 4: Reset tracker and auto-save guard (D-04, Pitfall 2).
+	if r.tracker != nil {
+		r.tracker.Reset()
+	}
+	r.autoSaved = sync.Once{}
+
+	// Step 5: User feedback (D-05, D-06).
+	if saved {
+		fmt.Fprintf(r.rl.Stdout(), "Conversation saved: %s (%d messages). Session cleared.\n",
+			savedID, msgCount)
+	} else {
+		fmt.Fprintln(r.rl.Stdout(), "Session cleared.")
+	}
 }
 
 // handleLoadCommand lists saved sessions and lets the user select one to restore.
