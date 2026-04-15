@@ -51,7 +51,7 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
 **Milestone Goal:** Named assistant profiles with custom system prompts, models, and providers — plus config path standardization and conversation reset.
 
 - [x] **Phase 14: Config Path Migration** - Standardize config to `~/.config/fenec` with automatic macOS migration (completed 2026-04-15)
-- [ ] **Phase 15: Clear Command** - `/clear` REPL command resets conversation mid-session without data loss
+- [x] **Phase 15: Clear Command** - `/clear` REPL command resets conversation mid-session without data loss (completed 2026-04-15)
 - [ ] **Phase 16: Profile Package** - Profile data model with TOML frontmatter parsing, file I/O, and validation
 - [ ] **Phase 17: System Flag** - `--system <file>` flag for ad-hoc system prompt override
 - [ ] **Phase 18: Profile Flag** - `--profile <name>` flag with model/prompt priority chain
@@ -83,7 +83,7 @@ Plans:
   4. Token tracking resets — no phantom truncation on fresh conversation after clear
 **Plans:** 1 plan
 Plans:
-- [ ] 15-01-PLAN.md — /clear command with auto-save, state reset, and test coverage
+- [x] 15-01-PLAN.md — /clear command with auto-save, state reset, and test coverage
 
 ### Phase 16: Profile Package
 **Goal**: Profile data model and file I/O enable creating, loading, and listing named profiles with TOML frontmatter and markdown system prompts
