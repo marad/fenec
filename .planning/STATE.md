@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Profiles & Config
 status: verifying
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-04-15T10:56:20.152Z"
+stopped_at: Completed 18-01-PLAN.md
+last_updated: "2026-04-15T11:51:13.498Z"
 last_activity: 2026-04-15
 progress:
   total_phases: 6
-  completed_phases: 4
-  total_plans: 4
-  completed_plans: 4
+  completed_phases: 5
+  total_plans: 5
+  completed_plans: 5
   percent: 100
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2025-07-18)
 
 **Core value:** An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
-**Current focus:** Phase 17 — system-flag
+**Current focus:** Phase 18 — profile-flag
 
 ## Current Position
 
-Phase: 18
-Plan: Not started
+Phase: 18 (profile-flag) — EXECUTING
+Plan: 1 of 1
 Status: Phase complete — ready for verification
 Last activity: 2026-04-15
 
@@ -78,6 +78,7 @@ Full decisions log in PROJECT.md Key Decisions table.
 
 - [Phase 16]: Profile files use +++‑delimited TOML frontmatter (Hugo-style); path traversal protection rejects names with /, \, or .
 - [Phase 17-system-flag]: Inline file reading in main.go for --system flag — no config helper needed for 5 lines
+- [Phase 18-profile-flag]: pflag.CommandLine.Changed("model") guard for three-layer model/prompt precedence — prevents profile model/provider from leaking when --model is explicit
 
 ### Pending Todos
 
@@ -100,5 +101,5 @@ None yet.
 ## Session Continuity
 
 Last activity: 2025-07-18
-Stopped at: Completed 17-01-PLAN.md
+Stopped at: Completed 18-01-PLAN.md
 Resume file: None

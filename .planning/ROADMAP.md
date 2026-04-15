@@ -54,7 +54,7 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
 - [x] **Phase 15: Clear Command** - `/clear` REPL command resets conversation mid-session without data loss (completed 2026-04-15)
 - [x] **Phase 16: Profile Package** - Profile data model with TOML frontmatter parsing, file I/O, and validation (1 plan) (completed 2026-04-15)
 - [x] **Phase 17: System Flag** - `--system <file>` flag for ad-hoc system prompt override (completed 2026-04-15)
-- [ ] **Phase 18: Profile Flag** - `--profile <name>` flag with model/prompt priority chain
+- [x] **Phase 18: Profile Flag** - `--profile <name>` flag with model/prompt priority chain (completed 2026-04-15)
 - [ ] **Phase 19: Profile Subcommands** - `fenec profile list/create/edit` CLI subcommands
 
 ## Phase Details
@@ -119,9 +119,9 @@ Plans:
   2. `--model` flag overrides profile's model setting (priority: `--model` > profile > config default)
   3. `--system` and `--profile` compose: `--system` overrides prompt while profile's model still applies
   4. Invalid profile name produces clear error message
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 18-01-PLAN.md — --profile/-P flag with model/prompt precedence chains
+- [x] 18-01-PLAN.md — --profile/-P flag with model/prompt precedence chains
 
 ### Phase 19: Profile Subcommands
 **Goal**: User can manage profiles through dedicated CLI subcommands without interfering with normal REPL operation
@@ -155,5 +155,5 @@ Plans:
 | 15. Clear Command | v1.3 | 0/1 | Not started | - |
 | 16. Profile Package | v1.3 | 1/1 | Complete   | 2026-04-15 |
 | 17. System Flag | v1.3 | 1/1 | Complete    | 2026-04-15 |
-| 18. Profile Flag | v1.3 | 0/? | Not started | - |
+| 18. Profile Flag | v1.3 | 1/1 | Complete   | 2026-04-15 |
 | 19. Profile Subcommands | v1.3 | 0/? | Not started | - |
