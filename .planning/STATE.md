@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Profiles & Config
-status: executing
-stopped_at: Phase 15 context gathered
-last_updated: "2026-04-15T08:46:33.085Z"
-last_activity: 2026-04-15 -- Phase 15 execution started
+status: verifying
+stopped_at: Completed 16-01-PLAN.md
+last_updated: "2026-04-15T09:26:29.666Z"
+last_activity: 2026-04-15
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 1
-  percent: 50
+  completed_phases: 3
+  total_plans: 3
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2025-07-18)
 
 **Core value:** An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
-**Current focus:** Phase 15 — clear-command
+**Current focus:** Phase 16 — profile-package
 
 ## Current Position
 
-Phase: 15 (clear-command) — EXECUTING
+Phase: 16 (profile-package) — EXECUTING
 Plan: 1 of 1
-Status: Executing Phase 15
-Last activity: 2026-04-15 -- Phase 15 execution started
+Status: Phase complete — ready for verification
+Last activity: 2026-04-15
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -75,6 +75,8 @@ Recent decisions affecting current work:
 
 Full decisions log in PROJECT.md Key Decisions table.
 
+- [Phase 16]: Profile files use +++‑delimited TOML frontmatter (Hugo-style); path traversal protection rejects names with /, \, or .
+
 ### Pending Todos
 
 None yet.
@@ -96,5 +98,5 @@ None yet.
 ## Session Continuity
 
 Last activity: 2025-07-18
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-clear-command/15-CONTEXT.md
+Stopped at: Completed 16-01-PLAN.md
+Resume file: None

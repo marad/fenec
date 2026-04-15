@@ -21,9 +21,9 @@ Requirements for Profiles & Config milestone. Each maps to roadmap phases.
 
 ### Profiles
 
-- [ ] **PROF-01**: User can create profile files as markdown with `+++`-delimited TOML frontmatter in `~/.config/fenec/profiles/`
-- [ ] **PROF-02**: Profile TOML frontmatter supports `model` field for model/provider override (using existing `provider/model` syntax)
-- [ ] **PROF-03**: Profile markdown body (after frontmatter) becomes the system prompt for the session
+- [x] **PROF-01**: User can create profile files as markdown with `+++`-delimited TOML frontmatter in `~/.config/fenec/profiles/`
+- [x] **PROF-02**: Profile TOML frontmatter supports `model` field for model/provider override (using existing `provider/model` syntax)
+- [x] **PROF-03**: Profile markdown body (after frontmatter) becomes the system prompt for the session
 - [ ] **PROF-04**: User can list available profiles with name and model via `fenec profile list`
 - [ ] **PROF-05**: User can scaffold a new profile via `fenec profile create <name>` (opens `$EDITOR` with template)
 - [ ] **PROF-06**: User can edit an existing profile via `fenec profile edit <name>` (opens `$EDITOR`)
@@ -74,9 +74,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONV-01 | Phase 15 | Pending |
 | CONV-02 | Phase 15 | Pending |
 | CONV-03 | Phase 15 | Pending |
-| PROF-01 | Phase 16 | Pending |
-| PROF-02 | Phase 16 | Pending |
-| PROF-03 | Phase 16 | Pending |
+| PROF-01 | Phase 16 | Complete |
+| PROF-02 | Phase 16 | Complete |
+| PROF-03 | Phase 16 | Complete |
 | FLAG-01 | Phase 17 | Pending |
 | FLAG-02 | Phase 18 | Pending |
 | FLAG-03 | Phase 18 | Pending |
