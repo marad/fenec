@@ -55,7 +55,7 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
 - [x] **Phase 16: Profile Package** - Profile data model with TOML frontmatter parsing, file I/O, and validation (1 plan) (completed 2026-04-15)
 - [x] **Phase 17: System Flag** - `--system <file>` flag for ad-hoc system prompt override (completed 2026-04-15)
 - [x] **Phase 18: Profile Flag** - `--profile <name>` flag with model/prompt priority chain (completed 2026-04-15)
-- [ ] **Phase 19: Profile Subcommands** - `fenec profile list/create/edit` CLI subcommands
+- [ ] **Phase 19: Profile Subcommands** - `fenec profile list/create/edit` CLI subcommands (1 plan)
 
 ## Phase Details
 
@@ -132,7 +132,9 @@ Plans:
   2. `fenec profile create <name>` scaffolds a new profile and opens `$EDITOR` with template
   3. `fenec profile edit <name>` opens existing profile in `$EDITOR`
   4. Subcommands route correctly via pre-pflag `os.Args` dispatch — no interference with normal `fenec` invocation
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 19-01-PLAN.md — Profile subcommand package (list/create/edit) + pre-pflag dispatch in main.go
 
 ## Progress
 
