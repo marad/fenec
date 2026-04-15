@@ -1,175 +1,319 @@
-# Feature Landscape: Multi-Provider LLM Support
+# Feature Landscape
 
-**Domain:** Multi-provider LLM integration for existing CLI AI agent platform
-**Researched:** 2026-04-12
-**Scope:** v1.1 milestone -- adding provider abstraction and OpenAI-compatible API support to Fenec
+**Domain:** CLI AI assistant — profile/persona system, config migration, conversation management
+**Researched:** 2025-07-14
+**Confidence:** HIGH (based on analysis of aichat, llm CLI, mods, fabric source code + Fenec codebase)
 
-## Context: What Already Exists
+## Competitive Landscape Summary
 
-Fenec v1.0 has a working agentic loop tightly coupled to the Ollama native API (`github.com/ollama/ollama/api`). The following are already implemented and working:
+Five tools define the ecosystem for CLI AI assistants with profile-like systems:
 
-- `ChatService` interface with `StreamChat`, `ListModels`, `Ping`, `GetContextLength`
-- `Conversation` struct using `[]api.Message` (Ollama types directly)
-- Tool registry with `Tool` interface returning `api.Tool` definitions
-- Agentic loop in REPL dispatching `api.ToolCall` objects
-- Streaming with thinking support, context tracking, session persistence
-- 8 built-in tools + Lua tool loading
+| Tool | Language | Profile Concept | Storage Format | System Prompt Override |
+|------|----------|----------------|----------------|----------------------|
+| **aichat** | Rust | "Roles" — markdown files with YAML frontmatter in `roles/` dir | `<name>.md` with `---` YAML frontmatter | `.role <name>` REPL command or `-r` flag |
+| **llm** (Simon Willison) | Python | "Templates" — YAML files combining prompt + model + options | YAML files in `templates/` dir | `-s/--system` flag inline, `--save` to persist |
+| **mods** (Charm) | Go | "Roles" — YAML list of system messages in config file | Inline in `mods.yaml` config under `roles:` key | `--role <name>` flag |
+| **fabric** | Go | "Patterns" — directories with `system.md` files | `~/.config/fabric/patterns/<name>/system.md` | `--pattern <name>` / `-p` flag |
+| **Fenec** (planned) | Go | "Profiles" — markdown files with TOML frontmatter | `~/.config/fenec/profiles/<name>.md` | `--system <file>` flag + `--profile` flag |
 
-**Key coupling points to Ollama types:**
-- `api.Message` used in Conversation, Session, REPL, and all tool code
-- `api.Tool` / `api.ToolFunction` / `api.ToolFunctionParameters` in every tool's `Definition()` method
-- `api.ToolCall` / `api.ToolCallFunctionArguments` in Registry.Dispatch and Tool.Execute
-- `api.ChatRequest` / `api.ChatResponse` / `api.Metrics` in Client/StreamChat
-- `api.Tools` (slice type) passed through REPL to StreamChat
+---
 
 ## Table Stakes
 
-Features users expect when a CLI agent supports multiple providers. Missing = the multi-provider claim feels fake.
+Features users expect from any CLI tool with a profile/persona system. Missing = product feels incomplete or broken.
 
-| Feature | Why Expected | Complexity | Dep on Existing Code |
-|---------|--------------|------------|---------------------|
-| Provider abstraction interface | Users expect `--model provider/model` to "just work" without knowing protocol details. Every multi-provider tool (LiteLLM, Continue, OpenCode, Hermes) has a provider interface. | High | Must replace or wrap every use of `api.Message`, `api.Tool`, `api.ToolCall` with provider-neutral types. The `ChatService` interface is a good starting point but its methods use Ollama types. |
-| OpenAI-compatible API client | The OpenAI `/v1/chat/completions` format is the lingua franca. LM Studio, Ollama's compat endpoint, OpenRouter, vLLM, and dozens of others speak it. Supporting it covers 90% of use cases. | High | Need a new client implementing the provider interface using `github.com/openai/openai-go/v3` or raw HTTP. Must handle streaming via SSE with delta chunks (different from Ollama's streaming format). |
-| Config-driven provider definitions | Users expect to add providers via config file, not code changes. Standard format: name, type, URL, API key, optional model overrides. Every multi-provider tool does this. | Medium | Currently no config file for providers. Need TOML/YAML with provider sections. Must handle API key storage (env var references, not plaintext). |
-| Unified model selection (`provider/model`) | Users expect to specify both provider and model in one string. The `provider/model` or `provider:model` syntax is standard across Hermes, OpenCode, Continue, and others. Fenec already has `--model` flag. | Medium | Existing `--model` flag passes model name directly to Ollama. Need to parse `provider/model`, route to correct provider, validate model exists on that provider. Must handle ambiguity (e.g., `ollama/gemma4:latest` where `:` is an Ollama tag, not a provider separator). |
-| Tool calling across providers | The whole point of Fenec is tool use. If switching providers breaks tool calling, the multi-provider support is useless. Users expect identical tool behavior regardless of provider. | High | Tools currently return `api.Tool` (Ollama type). Need provider-neutral tool definitions that translate to both Ollama native format and OpenAI format. The formats are similar but differ in specifics (Ollama uses `api.NewToolPropertiesMap()` with ordered maps; OpenAI uses `map[string]any` JSON schema). |
-| Streaming responses from all providers | Fenec streams by default. If a new provider doesn't stream, it feels broken. Users expect the same streaming experience regardless of backend. | High | Ollama native streaming uses a callback function (`api.ChatResponseFunc`). OpenAI streaming uses SSE with `data:` prefixed JSON chunks and a `ChatCompletionAccumulator`. Need a unified streaming interface that normalizes both into the same token-callback pattern. |
-| Provider health checks | When a provider is unreachable, show a clear error with the provider name and URL, not a generic connection failure. Users with multiple providers need to know which one failed. | Low | Existing `Ping()` method on `ChatService` is provider-agnostic already. Each provider implements its own health check. |
-| Graceful fallback when provider lacks features | Not all providers support thinking/reasoning, context length queries, or model listing. Users expect the agent to work with reduced features rather than crash. | Medium | `GetContextLength` and `ListModels` may not be available on all OpenAI-compatible endpoints. Need sensible defaults and feature detection. |
+### Profile/Persona Features
+
+| Feature | Why Expected | Complexity | Existing Dependency | Notes |
+|---------|--------------|------------|-------------------|-------|
+| **Named profile selection via flag** (`--profile <name>` / `-P`) | aichat (`-r`), mods (`--role`), fabric (`-p`) all support this. Users expect CLI flag activation. | Low | pflag already wired | Just a new string flag + lookup in profiles dir |
+| **Profile = system prompt + model override** | aichat roles have prompt + model in frontmatter. llm templates have prompt + model. This is the minimum useful combination. | Low | Existing `LoadSystemPrompt()` + `--model` flag logic | Profile overrides defaults for both |
+| **Profile listing** (`fenec profile list`) | aichat (`.role` lists roles), llm (`llm templates`), mods (`--list-roles`). Users need to discover what's available. | Low | `os.ReadDir()` on profiles dir | Just enumerate `profiles/*.md` |
+| **Ad-hoc system prompt override** (`--system <file>`) | llm (`-s`), fabric patterns. Essential for one-off prompt injection without creating a saved profile. | Low | Existing `LoadSystemPrompt()` function | Replaces `system.md` for this invocation only |
+| **Profile stored as human-editable files** | aichat = `.md` files, llm = YAML files, fabric = `system.md` in dirs. Users expect to `$EDITOR` their profiles directly. | Low | Already using `system.md` for default prompt | Natural extension of existing pattern |
+| **Conversation reset** (`/clear`) | aichat (`.empty session`). Every REPL with session context needs a way to start fresh without quitting. | Low | Existing `chat.Conversation` + `session.Session` types | Reset messages to just system prompt |
+
+### Config Path Features
+
+| Feature | Why Expected | Complexity | Existing Dependency | Notes |
+|---------|--------------|------------|-------------------|-------|
+| **~/.config/fenec as canonical path** | CLI convention — aichat uses `~/.config/aichat`, mods uses `~/.config/mods`. macOS `~/Library/Application Support/` is for GUI apps. CLI tools that use it feel wrong. | Low | Existing `config.ConfigDir()` uses `os.UserConfigDir()` which returns `~/Library/Application Support/` on macOS | Change to hardcode `~/.config/fenec` |
+| **Auto-migration from old path** | Data loss = unacceptable. Users who have sessions, config, tools at the old path must not lose them. | Medium | All existing code goes through `config.ConfigDir()` | One-time move on startup |
+
+---
 
 ## Differentiators
 
-Features that would make Fenec's multi-provider support notably better than alternatives. Not expected, but valuable.
+Features that set Fenec apart. Not universally expected, but add significant value.
 
-| Feature | Value Proposition | Complexity | Dep on Existing Code |
-|---------|-------------------|------------|---------------------|
-| Model discovery from providers | Auto-list available models from each configured provider. Unlike tools that require manual model lists, Fenec queries providers directly. Ollama has `/api/tags`, OpenAI-compat has `/v1/models`. | Low | Existing `ListModels` in `ChatService` does this for Ollama. OpenAI-compat endpoint supports `/v1/models` too. LM Studio and Ollama both serve this. |
-| Provider-specific feature negotiation | Detect what each provider supports (thinking, tool calling, streaming+tools combo) and adapt behavior. E.g., disable thinking for providers that don't support it, fall back to non-streaming for OpenAI-compat endpoints where streaming+tools is broken. | Medium | The Ollama native API supports streaming+tool calling simultaneously. The Ollama OpenAI-compatible endpoint has documented issues with streaming+tools (tool calls silently dropped). Need per-provider feature flags. |
-| Default provider with seamless upgrade | Keep Ollama native as the default zero-config experience. Users only touch provider config when they want LM Studio/OpenAI/other. Existing `fenec` command works exactly as before. | Low | Current code already defaults to Ollama at localhost:11434. Multi-provider is additive, not replacement. The default provider should be implicit Ollama native. |
-| Session portability across providers | Conversation history works across provider switches. Start with Ollama, switch to LM Studio mid-session, continue the conversation. | Medium | Currently `Conversation` uses `[]api.Message` (Ollama types). If provider-neutral types are introduced, sessions saved with Ollama types need migration or the neutral format must be the persistence format. |
-| Config hot-reload | Change provider config without restarting Fenec. Add a new provider, modify a URL, update an API key. | Low | No config reload currently. A `/providers` REPL command to list/check providers and a file watcher or explicit reload command. |
-| `/provider` REPL command | Interactive provider switching within a session, similar to existing `/model` command. | Low | Follows the same pattern as `handleModelCommand()` in REPL. List providers, show current, allow selection. |
+| Feature | Value Proposition | Complexity | Existing Dependency | Notes |
+|---------|-------------------|------------|-------------------|-------|
+| **TOML frontmatter in profile markdown** | Fenec already uses TOML config. TOML frontmatter (`+++` delimiters, Hugo convention) keeps the ecosystem consistent. aichat uses YAML frontmatter, but Fenec's TOML-everywhere story is cleaner. | Low | Existing `BurntSushi/toml` dependency | Parse `+++...+++` then TOML decode header |
+| **Profile includes provider override** | Most tools only override model. Fenec's `provider/model` syntax means profiles can pin both provider AND model — e.g., a "code-review" profile always uses `copilot/claude-sonnet-4`. | Low | Existing `providerRegistry.Get()` | Add `provider` field to frontmatter or use existing `provider/model` syntax in the `model` field |
+| **Interactive profile creation** (`fenec profile create`) | aichat and llm both let you edit roles/templates, but neither has a guided creation flow. A subcommand that opens `$EDITOR` with a template scaffold is more discoverable. | Medium | Needs subcommand routing (pflag `Args()` or simple arg parsing) | Opens editor with pre-filled template |
+| **Profile edit subcommand** (`fenec profile edit <name>`) | llm has `llm templates edit`. Opens the file in `$EDITOR` directly. Saves users from remembering the profile directory path. | Low | `os.Getenv("EDITOR")` + `exec.Command` | Convenience wrapper |
+| **Migration with user feedback** | Print a clear message: "Migrated config from ~/Library/Application Support/fenec → ~/.config/fenec". Silent migrations confuse users when they go looking for their files. | Low | `fmt.Fprintf(os.Stderr, ...)` | One log line at startup |
+
+---
 
 ## Anti-Features
 
-Features to explicitly NOT build for the multi-provider milestone.
+Features to explicitly NOT build for v1.3.
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| Universal provider abstraction (Anthropic, Google, etc.) | Each provider has a different API shape (Anthropic uses XML-ish tool results, Google Gemini has a completely different format). Supporting all of them requires per-provider adapters with significant testing burden. The OpenAI-compatible format already covers Ollama, LM Studio, OpenRouter, vLLM, text-generation-inference, and most local inference servers. | Support exactly two protocols: Ollama native and OpenAI-compatible. This covers all the providers in PROJECT.md scope. Add specific provider protocols only if demand justifies the maintenance cost. |
-| LangChain-style provider chain / fallback routing | Automatic failover between providers, load balancing, retry with different provider. This is infrastructure for production services, not a personal CLI agent. Adds enormous complexity for a single-user tool. | Manual provider selection via `--model provider/model`. If one provider is down, the user picks another. Simple and predictable. |
-| API key management UI / keychain integration | Secure credential storage with OS keychain, encrypted config, key rotation. Over-engineered for a personal tool. | API keys in config file referencing environment variables (e.g., `api_key = "$OPENAI_API_KEY"`). Env vars are the standard for CLI tools. Warn if plaintext keys appear in config. |
-| Provider-specific model parameter tuning | Per-provider temperature, top_p, frequency_penalty mappings. Different providers have different parameter ranges and defaults. Normalizing them is a rabbit hole. | Pass parameters through to the provider as-is. If a parameter isn't supported, the provider ignores it or errors. Document which parameters each provider type supports. |
-| OpenAI Responses API support | OpenAI is pushing the Responses API as the successor to Chat Completions, but it's OpenAI-specific, not an interop standard. No other provider implements it. | Stick with Chat Completions API (`/v1/chat/completions`) which is the universal compatibility target. |
-| Streaming tool calls via OpenAI-compatible endpoint | Ollama's OpenAI-compatible endpoint silently drops tool calls when streaming is enabled (documented issue as of 2026). Trying to work around this creates fragile provider-specific code. | For OpenAI-compatible providers, disable streaming when tools are present in the request. Use streaming only for pure chat (no tools). For Ollama native, streaming+tools works fine and should remain the default. |
+| **Profile inheritance/composition** | aichat doesn't have it, fabric doesn't have it. Adds complexity with unclear benefit. "Profile A extends Profile B" is over-engineering for a personal tool. | Keep profiles flat and independent. Users can copy-paste between profile files. |
+| **Profile stored in main config TOML** | mods puts roles inline in its YAML config. This couples profile management to config editing and makes per-profile files impossible. Fenec correctly plans separate files. | One file per profile in `profiles/` dir. |
+| **GUI profile editor / TUI form** | Out of scope per PROJECT.md (CLI only). A TUI form for profile fields would be scope creep. | `$EDITOR` with a template scaffold. |
+| **Cloud profile sync** | Personal tool, single user. No cloud. | Profiles are plain files — users can use git/syncthing/dotfiles themselves. |
+| **Automatic profile selection based on context** | "Smart" routing that picks a profile based on working directory or prompt content is fragile and surprising. | Explicit `--profile` flag or REPL command. User is in control. |
+| **`--system` accepting inline strings** | llm does `-s 'inline prompt text'`. For Fenec, `--system` should accept a **file path** only, matching the existing `system.md` file-based pattern. Inline strings encourage long unwieldy commands and are hard to reuse. | `--system path/to/prompt.md` reads from file. For inline, users can create a profile. |
+| **cobra migration for subcommands** | Fenec uses pflag directly. Adding cobra just for `fenec profile *` subcommands is heavy. pflag + `pflag.Args()` positional arg parsing is sufficient for 3 subcommands. | Parse `os.Args` / `pflag.Args()` for `profile` subcommand routing. If subcommand count grows past 5-6 in future milestones, reconsider cobra then. |
+| **XDG_CONFIG_HOME env var override** | aichat supports `AICHAT_CONFIG_DIR` env var. Nice-to-have but not v1.3 scope. Hardcoding `~/.config/fenec` handles 99% of cases. | Can add `FENEC_CONFIG_DIR` env var in a future milestone if requested. |
+| **Profile applied mid-session via REPL command** | aichat supports `.role <name>` in REPL to switch roles mid-conversation. Adds complexity around what happens to existing conversation context. | Defer to v1.4. For now, profiles are launch-time only via `--profile` flag. |
+
+---
 
 ## Feature Dependencies
 
 ```
-Provider-Neutral Types (Message, Tool, ToolCall)
-  -> Provider Interface (abstracts ChatService per-provider)
-     -> Ollama Native Provider (wraps existing Client)
-     -> OpenAI-Compatible Provider (new, uses openai-go or raw HTTP)
-        -> Streaming via SSE
-        -> Tool call translation (provider-neutral <-> OpenAI format)
-        -> Non-streaming fallback for tools (OpenAI-compat streaming+tools bug)
-  -> Config System (provider definitions in TOML)
-     -> API key from env vars
-     -> Provider URL + type + model overrides
-  -> Unified Model Selection (--model provider/model parsing)
-     -> Provider routing (parse provider prefix, dispatch to correct provider)
-     -> Model discovery from providers (/v1/models, /api/tags)
-  -> Session Portability (neutral message types in persistence)
+Config path migration → Must happen BEFORE any other feature (all paths depend on ConfigDir())
+  │
+  ├── --system flag (reads file from disk, needs correct config context)
+  │
+  ├── Profile storage (profiles/ dir lives under ConfigDir())
+  │     │
+  │     ├── --profile flag (loads profile from profiles/ dir)
+  │     │
+  │     ├── fenec profile list (enumerates profiles/ dir)
+  │     │
+  │     ├── fenec profile create (writes to profiles/ dir)
+  │     │
+  │     └── fenec profile edit (opens file from profiles/ dir)
+  │
+  └── /clear command (independent of config path, but listed here for completeness)
 
-Tool Definition Translation
-  -> Provider-neutral tool definitions (not api.Tool)
-  -> Translation to Ollama api.Tool format
-  -> Translation to OpenAI ChatCompletionToolUnionParam format
-  -> Tool.Execute stays the same (args are already just key-value maps)
-
-Existing Tool System (UNCHANGED)
-  -> Registry, Dispatch, built-in tools, Lua tools all work as-is
-  -> Only the Definition() return type changes
-  -> Execute() signature may change from api.ToolCallFunctionArguments to map[string]any
+Subcommand routing → Required for `fenec profile *` commands
+  │
+  ├── fenec profile create
+  ├── fenec profile list
+  └── fenec profile edit
 ```
 
-## Critical Type Mapping: Ollama Native vs OpenAI-Compatible
+### Dependency Notes
 
-This is the core technical challenge. Both formats express the same concepts but with different type shapes.
+1. **Config path migration is foundational.** Every feature reads/writes to `ConfigDir()`. Changing the path must happen first and be tested thoroughly before building on top.
 
-### Tool Definitions (Request Side)
+2. **`--system` flag is independent of profiles.** It's a simpler feature (read file, use as system prompt) and should be built before the profile system since profiles build on the same prompt-loading pattern.
 
-| Concept | Ollama Native (`api.Tool`) | OpenAI Chat Completions |
-|---------|---------------------------|------------------------|
-| Wrapper | `api.Tool{Type: "function", Function: api.ToolFunction{...}}` | `{"type": "function", "function": {...}}` |
-| Name | `Function.Name` | `function.name` |
-| Description | `Function.Description` | `function.description` |
-| Parameters | `api.ToolFunctionParameters{Type: "object", Properties: OrderedMap, Required: []string}` | `{"type": "object", "properties": map[string]any, "required": [...]}` |
-| Properties | `api.NewToolPropertiesMap()` (ordered map with `.Set()`) | Standard JSON Schema `map[string]any` |
+3. **`/clear` is fully independent.** It only touches `chat.Conversation` internals. Can be built in any order.
 
-### Messages
+4. **Subcommand routing is a prerequisite for `fenec profile *`.** But `--profile` flag works with existing pflag patterns.
 
-| Concept | Ollama Native (`api.Message`) | OpenAI Chat Completions |
-|---------|------------------------------|------------------------|
-| Role | `Role string` ("system", "user", "assistant", "tool") | Same roles |
-| Content | `Content string` | `content string` (or array for multimodal) |
-| Tool calls | `ToolCalls []api.ToolCall` on assistant message | `tool_calls []` on assistant message |
-| Tool result | `Role: "tool"`, `ToolCallID string`, `Content string` | `role: "tool"`, `tool_call_id string`, `content string` |
-| Thinking | `Thinking string` field | Not standardized (provider-specific) |
+---
 
-### Tool Calls (Response Side)
+## Expected User Workflows
 
-| Concept | Ollama Native (`api.ToolCall`) | OpenAI Chat Completions |
-|---------|-------------------------------|------------------------|
-| ID | `ID string` | `id string` (e.g., "call_xyz123") |
-| Function name | `Function.Name` | `function.name` |
-| Arguments | `Function.Arguments` (ordered map, `.Get(key)` method) | `function.arguments` (JSON string, must `json.Unmarshal`) |
-| Type | (implicit) | `type: "function"` |
+### Creating a Profile
 
-### Streaming
+```bash
+# Option A: guided creation (opens $EDITOR with scaffold)
+$ fenec profile create coder
+# Editor opens with:
+# +++
+# model = "copilot/claude-sonnet-4"
+# +++
+# You are a senior Go developer. Be concise. Prefer table-driven tests.
 
-| Concept | Ollama Native | OpenAI Chat Completions |
-|---------|--------------|------------------------|
-| Format | Callback function `func(api.ChatResponse) error` | SSE stream, `data:` prefixed JSON chunks |
-| Content | `resp.Message.Content` | `chunk.Choices[0].Delta.Content` |
-| Tool calls | `resp.Message.ToolCalls` in pre-Done chunk | Delta tool_calls accumulated across chunks |
-| Done signal | `resp.Done == true` with Metrics | `finish_reason: "stop"` or `"tool_calls"` |
-| Metrics | `resp.Metrics` (PromptEvalCount, EvalCount, etc.) | `usage` object (prompt_tokens, completion_tokens) |
-| Accumulation | Manual (current code uses `strings.Builder`) | `ChatCompletionAccumulator` helper in openai-go |
+# Option B: manual creation (power user)
+$ cat > ~/.config/fenec/profiles/coder.md << 'EOF'
++++
+model = "copilot/claude-sonnet-4"
++++
+You are a senior Go developer. Be concise. Prefer table-driven tests.
+EOF
+```
 
-## MVP Recommendation for v1.1
+### Switching Profiles
 
-Prioritize in this order:
+```bash
+# At launch
+$ fenec --profile coder
+$ fenec -P coder
 
-1. **Provider-neutral types** -- Define `Message`, `ToolDefinition`, `ToolCall`, `StreamChunk` types that don't import `github.com/ollama/ollama/api`. This is the foundation everything else depends on.
+# Combined with other flags
+$ fenec -P coder --debug
+$ fenec -P coder --model ollama/gemma4  # --model overrides profile's model
 
-2. **Provider interface** -- Define the `Provider` interface (analogous to current `ChatService` but returning neutral types). Include `StreamChat`, `ListModels`, `Ping`, and feature flags.
+# List available profiles
+$ fenec profile list
+  coder       copilot/claude-sonnet-4
+  writer      ollama/gemma4
+  reviewer    copilot/claude-sonnet-4
+```
 
-3. **Ollama native provider** -- Wrap existing `Client` code as a Provider. Translate between neutral types and `api.*` types. All existing functionality preserved. This is the "keep what works" step.
+### Ad-hoc System Prompt Override
 
-4. **OpenAI-compatible provider** -- New provider using `openai-go/v3` with `option.WithBaseURL`. Non-streaming for tool calls (streaming+tools is broken on many compat endpoints). Streaming for pure chat.
+```bash
+# One-off system prompt from file
+$ fenec --system ~/prompts/sql-expert.md
 
-5. **Config system** -- TOML file with provider definitions. Default Ollama provider implicit. API key via env var references.
+# Works with pipe mode
+$ cat schema.sql | fenec --system ~/prompts/sql-expert.md --pipe
 
-6. **Unified `--model provider/model` routing** -- Parse the prefix, resolve to provider, pass model name. Fall back to default provider if no prefix.
+# --system and --profile are mutually exclusive (fail fast with error)
+```
 
-Defer:
-- **Session migration**: Existing sessions can be invalidated or auto-migrated. Not blocking.
-- **Provider REPL command**: Nice but `/model` already works within a provider. Add after core works.
-- **Config hot-reload**: Restart is fine for config changes initially.
-- **Feature negotiation**: Start with manual provider type flags. Auto-detection later.
+### Config Migration Experience
+
+```bash
+$ fenec
+# First run after update:
+# "Migrated configuration from ~/Library/Application Support/fenec to ~/.config/fenec"
+# Then normal startup continues
+
+# Subsequent runs: no message, no migration check needed
+# (migration is idempotent — if new path exists, skip)
+```
+
+### Clearing Conversation Mid-Session
+
+```
+You> /clear
+Conversation cleared. Starting fresh.
+
+You> (new conversation, system prompt preserved)
+```
+
+---
+
+## MVP Recommendation
+
+**Prioritize in this order:**
+
+1. **Config path migration** — Foundational. Unblocks everything else. Do first.
+2. **`/clear` REPL command** — Trivial, independent, instant user value.
+3. **`--system <file>` flag** — Simple flag, establishes the pattern for prompt loading from arbitrary files.
+4. **Profile file format + `--profile` flag** — Core profile feature. Parse TOML frontmatter, load prompt, override model/provider.
+5. **`fenec profile list`** — Enumerate profiles directory. Needed for discoverability.
+6. **`fenec profile create`** — Scaffold template, open in `$EDITOR`.
+7. **`fenec profile edit <name>`** — Open existing profile in `$EDITOR`.
+
+**Defer:**
+- `/profile` REPL command for mid-session switching (v1.4 — needs conversation context decisions)
+- `FENEC_CONFIG_DIR` env var override (future — if requested)
+- Profile composition/inheritance (likely never needed)
+
+---
+
+## Detailed Feature Specifications
+
+### Profile File Format
+
+```markdown
++++
+model = "copilot/claude-sonnet-4"
++++
+You are a senior Go developer...
+```
+
+**Frontmatter fields (all optional):**
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `model` | string | config default | Can be bare model name or `provider/model` syntax |
+
+**Parsing rules:**
+- If file starts with `+++`, parse TOML between first and second `+++`
+- Everything after second `+++` is the system prompt (trimmed)
+- If no `+++` delimiters, entire file is the system prompt (backward-compat with plain `system.md`)
+- Empty prompt section → use default system prompt (profile only overrides model)
+
+### Precedence Rules
+
+```
+Highest priority → Lowest priority:
+
+--model flag        > profile model   > config default_model  > first available
+--system flag       > profile prompt  > ~/.config/fenec/system.md > hardcoded default
+--profile activates both model + prompt from the profile file
+--system + --profile = error (conflicting prompt sources — fail fast)
+```
+
+### /clear Implementation
+
+**What it resets:**
+- `conv.Messages` → reset to just `[system_message]`
+- `session` → create new `session.Session` with fresh ID + timestamp
+- `tracker` → reset token counts
+- Auto-save of old session before clearing (if has content)
+
+**What it preserves:**
+- System prompt (including tool descriptions)
+- Active model + provider
+- Debug mode, yolo mode
+- REPL readline history
+
+### Config Path Migration
+
+**Migration algorithm (macOS only):**
+```
+oldDir = os.UserConfigDir() + "/fenec"        // ~/Library/Application Support/fenec
+newDir = os.Getenv("HOME") + "/.config/fenec" // ~/.config/fenec
+
+if runtime.GOOS != "darwin" {
+    // Linux already uses ~/.config via os.UserConfigDir()
+    // Just change ConfigDir() to always return ~/.config/fenec
+    return
+}
+
+if !exists(oldDir) {
+    return  // Nothing to migrate
+}
+
+if exists(newDir) {
+    return  // Already migrated (or user manually created it)
+}
+
+os.MkdirAll(filepath.Dir(newDir), 0755)
+os.Rename(oldDir, newDir)  // Atomic move on same filesystem
+log("Migrated configuration: %s → %s", oldDir, newDir)
+```
+
+**Files affected:**
+- `config.toml` (main config)
+- `system.md` (system prompt)
+- `sessions/` (saved sessions)
+- `tools/` (Lua tools)
+- `history` (readline history)
+
+### Subcommand Routing (without cobra)
+
+```go
+// In main.go, before pflag.Parse():
+args := os.Args[1:]
+if len(args) > 0 && args[0] == "profile" {
+    handleProfileSubcommand(args[1:])
+    return
+}
+// Then normal pflag.Parse() for flags
+```
+
+This is the simplest pattern for adding subcommands to a pflag-based CLI. It handles:
+- `fenec profile list`
+- `fenec profile create <name>`
+- `fenec profile edit <name>`
+
+---
 
 ## Sources
 
-- [Ollama OpenAI compatibility docs](https://docs.ollama.com/api/openai-compatibility) -- supported/unsupported features (HIGH confidence)
-- [LM Studio tool calling docs](https://lmstudio.ai/docs/developer/openai-compat/tools) -- format and limitations (HIGH confidence)
-- [openai-go examples](https://github.com/openai/openai-go/blob/main/examples/chat-completion-tool-calling/main.go) -- tool calling types (HIGH confidence)
-- [openai-go streaming accumulator](https://github.com/openai/openai-go/blob/main/examples/chat-completion-accumulating/main.go) -- streaming pattern (HIGH confidence)
-- [Ollama streaming+tools issue](https://github.com/ollama/ollama/issues/12557) -- OpenAI-compat endpoint drops tool calls when streaming (MEDIUM confidence)
-- [OpenAI Chat Completions API reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) -- tool_calls format (HIGH confidence)
-- [Mozilla any-llm-go](https://blog.mozilla.ai/run-openai-claude-mistral-llamafile-and-more-from-one-interface-now-in-go/) -- provider abstraction patterns in Go (MEDIUM confidence)
-- [Hermes agent model selection](https://deepwiki.com/NousResearch/hermes-agent/2.3-model-and-provider-selection) -- provider:model syntax patterns (MEDIUM confidence)
-- [OpenCode provider configuration](https://opencode.ai/docs/providers/) -- config patterns (MEDIUM confidence)
-- [Ollama native vs OpenAI-compat analysis](https://openclaw-ai.com/en/docs/providers/ollama/) -- capability comparison (MEDIUM confidence)
-- [openai-go option.WithBaseURL](https://pkg.go.dev/github.com/openai/openai-go/option) -- custom endpoint configuration (HIGH confidence)
-- [LiteLLM config format](https://docs.litellm.ai/docs/proxy/configs) -- multi-provider config patterns (MEDIUM confidence)
+- **aichat** role system: `src/config/role.rs` — roles are `.md` files with YAML frontmatter (`---`), stored in `roles/` dir under config. Built-in roles embedded via `rust_embed`. Fields: model, temperature, top_p, use_tools. [HIGH confidence — read source directly]
+- **aichat** config dir: `src/config/mod.rs` — uses `XDG_CONFIG_HOME` or `dirs::config_dir()`. Supports `AICHAT_CONFIG_DIR` env override. [HIGH confidence — read source]
+- **aichat** clear: `.empty session` REPL command calls `empty_session()` which calls `clear_messages()`. [HIGH confidence — read source]
+- **llm** templates: YAML files in `templates/` dir. Created via `--save` flag or `llm templates edit`. Support prompt, system prompt, model, options, schema, tools. [HIGH confidence — official docs at llm.datasette.io]
+- **llm** system prompt: `-s/--system` flag for inline system prompt text. Can be saved to template. [HIGH confidence — official docs]
+- **mods** roles: YAML list of system messages under `roles:` key in config file. `--role <name>` flag. Each role message loaded via `loadMsg()` which can load from file paths. Uses cobra for CLI. [HIGH confidence — read source]
+- **fabric** patterns: `~/.config/fabric/patterns/<name>/system.md` directory structure. `--pattern` flag. Go-based. [HIGH confidence — README + source]
+- **TOML frontmatter**: `+++` delimiter convention from Hugo/Zola static site generators. Well-established, unambiguous. [HIGH confidence — widely documented]
+- **Go `os.UserConfigDir()`**: Returns `~/Library/Application Support` on macOS, `~/.config` on Linux. [HIGH confidence — Go stdlib docs]

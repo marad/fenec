@@ -1,338 +1,178 @@
-# Research Summary: GitHub Models Provider (v1.2)
+# Project Research Summary
 
-**Project:** Fenec — Go CLI AI assistant
-**Milestone:** v1.2 — `copilot` provider type targeting GitHub Models API
-**Researched:** 2026-04-14 (ARCHITECTURE, RISKS, LIBRARIES) / 2026-04-12 (FEATURES)
-**Overall Confidence:** HIGH — three of four files verified with live API calls
+**Project:** Fenec v1.3 — Profiles, Subcommands & Config Migration
+**Domain:** CLI AI assistant — profile/persona system, config path standardization, conversation management
+**Researched:** 2025-07-18
+**Confidence:** HIGH
 
 ## Executive Summary
 
-Adding a `copilot` provider to Fenec is a well-scoped integration task, not an architecture overhaul. GitHub Models API is OpenAI-compatible for every operation that matters — chat completions, tool calling, and SSE streaming — which means Fenec's existing `openai.Provider` does 80% of the work. The copilot provider is a thin wrapper that resolves a GitHub OAuth token, delegates all chat operations to the embedded openai provider, and replaces only model listing with a custom HTTP call to the GitHub Models catalog endpoint.
+Fenec v1.3 adds a profile system (named persona files with TOML frontmatter), CLI subcommands for profile management, macOS config path migration from `~/Library/Application Support/fenec` to `~/.config/fenec`, new `--system`/`--profile` CLI flags, and a `/clear` REPL command. The competitive landscape (aichat, llm CLI, mods, fabric) confirms these are table-stakes features for CLI AI tools — every major competitor has profile/role equivalents, and `~/.config/` is the universal CLI convention. The good news: Fenec's existing stack already handles everything. **Zero new dependencies are needed.** BurntSushi/toml already supports string decoding for frontmatter, pflag supports scoped FlagSets for subcommands, and Go stdlib covers config migration, editor integration, and path resolution.
 
-The single biggest technical constraint is that chat completions and model listing live on **different base URL paths** (`/inference` vs `/v1`) under `models.github.ai`, making it impossible to use one SDK client instance for both. The solution is settled: use `openai-go/v3` with `baseURL = https://models.github.ai/inference` for chat, and implement `ListModels()` as a direct `net/http` call to `https://models.github.ai/v1/models`. This is confirmed by three independent researchers and verified with live API calls.
+The recommended approach is a dependency-ordered build: config path migration first (every feature depends on correct paths), then the independent `/clear` command, then the profile data model, followed by flag integration and subcommand routing. This order was derived from both the architecture dependency graph and pitfall analysis — building out of order risks features operating against wrong paths or incomplete data models. The architecture is conservative: one new package (`internal/profile/`), modifications to three existing files, and manual subcommand routing instead of Cobra.
 
-The primary implementation risks are operational, not technical: aggressive rate limits (50 requests/day on high-tier models for free users), Azure Content Safety filters that are always-on and cannot be disabled, and `gh` CLI dependency that must fail gracefully with actionable error messages. None of these block the thin-wrapper approach, but all three require explicit error handling to avoid a poor user experience.
+The primary risks are subtle state management bugs, not architectural complexity. The `/clear` command has three interacting pitfalls (sync.Once preventing re-save, empty session overwriting valuable data, ghost token counts triggering false truncation). Config migration must happen inside `ConfigDir()` before it returns, or fsnotify will watch the wrong directory. Profile activation must go through `refreshSystemPrompt()` or tool descriptions silently vanish. All pitfalls have verified prevention strategies with concrete code patterns. The overall risk is low because every feature touches a narrow surface area and the existing codebase is well-structured.
 
----
+## Key Findings
 
-## Consensus Findings
+### Recommended Stack
 
-The following are agreed upon by all researchers (or 3 of 4, with clear majority):
+Zero new dependencies. All v1.3 features build on the existing dependency set plus Go stdlib. This is a direct result of good prior stack choices.
 
-### The Definitive Base URLs
+**Core technologies (all existing):**
+- **BurntSushi/toml v1.6.0:** TOML frontmatter parsing via `toml.Decode(string, &struct)` — already in go.mod, only `DecodeFile()` used today but `Decode()` is first-class API
+- **spf13/pflag v1.0.10:** Subcommand routing via `pflag.NewFlagSet()` per subcommand — already in go.mod, scoped flag parsing confirmed
+- **Go stdlib `os/exec`:** `$EDITOR` integration for `profile create`/`edit` — standard `cmd.Run()` with stdio wiring
+- **Go stdlib `os`:** Config migration via `os.Rename()` (atomic on same filesystem), `os.UserHomeDir()` for XDG path construction
+- **Go stdlib `runtime`:** `runtime.GOOS == "darwin"` guard for macOS-only migration
 
-| Operation | URL | Method | Notes |
-|-----------|-----|--------|-------|
-| Chat completions | `https://models.github.ai/inference/chat/completions` | POST | SDK base URL: `https://models.github.ai/inference` |
-| Streaming chat | Same URL, `"stream": true` in body | POST | Standard SSE, `data: [DONE]` terminator |
-| Model listing | `https://models.github.ai/v1/models` | GET | Custom HTTP call, NOT via openai-go SDK |
+**What NOT to add:** Cobra (overkill for 3 subcommands), adrg/xdg (10 lines of stdlib replaces it), any frontmatter parser library (trivially 25 lines), mitchellh/go-homedir (deprecated, stdlib covers it).
 
-**All three live-tested researchers confirmed these URLs work.** The `/inference/v1/chat/completions` alternate path also works but is not canonical.
+### Expected Features
 
-### Authentication Flow
+**Must have (table stakes):**
+- `--profile <name>` flag — every competitor has this (aichat `-r`, mods `--role`, fabric `-p`)
+- Profile = system prompt + model override — minimum useful profile definition
+- `fenec profile list` — users need to discover available profiles
+- `--system <file>` flag — ad-hoc prompt override without creating a saved profile
+- Human-editable profile files — markdown with TOML frontmatter, `$EDITOR`-friendly
+- `/clear` REPL command — reset conversation without quitting
+- `~/.config/fenec` as canonical path — CLI convention, `~/Library/Application Support/` is for GUI apps
+- Auto-migration from old path — no data loss on upgrade
 
-Token resolution priority (matches `gh` CLI ecosystem behavior, verified from `go-gh` source analysis):
+**Should have (differentiators):**
+- TOML frontmatter (`+++` delimiters) — consistent with Fenec's TOML-everywhere approach
+- Provider override in profiles — pin both provider AND model (e.g., `copilot/claude-sonnet-4`)
+- Interactive `fenec profile create` — opens `$EDITOR` with scaffold template
+- `fenec profile edit <name>` — convenience wrapper for editing profiles
+- Migration feedback message — "Migrated config from X → Y"
 
-1. `GH_TOKEN` env var — highest priority (CI/CD, Docker, Codespaces)
-2. `GITHUB_TOKEN` env var — second priority (GitHub Actions auto-injection)
-3. `gh auth token --hostname github.com` subprocess — reads system keyring
+**Defer (v2+):**
+- Profile switching mid-session via REPL command (needs conversation context decisions)
+- `FENEC_CONFIG_DIR` env var override
+- Profile inheritance/composition (over-engineering)
+- Automatic profile selection based on context (fragile, surprising)
 
-**Scope requirements:** Standard `gh auth login` OAuth tokens (scopes: `gist, read:org, repo, workflow`) are sufficient for GitHub Models API. No additional `models:read` scope is needed for OAuth tokens. PATs DO require `models:read`.
+### Architecture Approach
 
-**Token lifetime:** GitHub OAuth tokens are long-lived (no automatic expiry). Fetch once at provider init — no refresh loop needed during a CLI session.
+The architecture adds one new internal package and modifies three existing files. Profiles are markdown files with TOML frontmatter stored in `~/.config/fenec/profiles/`. The startup flow gains two new insertion points: migration runs inside `ConfigDir()` before it returns, and profile/system-prompt resolution slots between config loading and REPL creation. Subcommand routing uses pre-pflag `os.Args` dispatch — not Cobra. The `/clear` command resets conversation state through existing REPL internals.
 
-### openai-go/v3 Compatibility
+**Major components:**
+1. **`internal/profile/`** (NEW) — Profile struct, TOML frontmatter parsing, Load/List/Create, file I/O, `$EDITOR` integration (~200 LOC)
+2. **`internal/config/config.go`** (MODIFIED) — `ConfigDir()` returns `~/.config/fenec` on macOS, `MigrateIfNeeded()` with atomic directory rename, `ProfilesDir()` helper
+3. **`main.go`** (MODIFIED) — Pre-pflag subcommand dispatch, `--profile`/`--system` flags, migration call on startup, priority-chain resolution for model and prompt
+4. **`internal/repl/repl.go`** (MODIFIED) — `/clear` handler with save-before-clear, resettable auto-save guard, context tracker reset
 
-| Feature | Compatible? | Notes |
-|---------|-------------|-------|
-| Chat completions | ✅ Yes | `option.WithBaseURL("https://models.github.ai/inference")` |
-| Tool calling | ✅ Yes | Identical request/response format to OpenAI |
-| SSE streaming | ✅ Yes | Standard format, works with `ssestream.Stream[ChatCompletionChunk]` |
-| Model listing | ❌ No | Different path + non-standard response schema |
-| `GetContextLength` | ❌ No (via SDK) | Use catalog `limits.max_input_tokens` via direct HTTP instead |
+**Key patterns:**
+- **Flag layering:** `config.toml defaults < profile settings < CLI flags` (standard Unix convention)
+- **Filename-as-identity:** Profile name derived from filename, not stored in content
+- **Priority chain:** `--model` > profile model > config default; `--system` > profile prompt > `system.md` > hardcoded default
 
-The existing `toOpenAITools()`, `toOpenAIMessages()`, `chatStreaming()`, and `extractReasoningContent()` methods in Fenec's openai provider work **unchanged** with GitHub Models.
+### Critical Pitfalls
 
-### Model Listing: Catalog vs SDK
+1. **`/clear` breaks `sync.Once` auto-save** — `sync.Once` has no `Reset()`. After `/clear`, the new conversation is never auto-saved. **Fix:** Replace with `bool` + `sync.Mutex` guard that `/clear` can reset.
 
-The `/v1/models` response uses `{"data": [...]}` structurally but individual model objects are GitHub-specific:
+2. **`/clear` overwrites previous session** — Without save-before-clear, `_autosave.json` gets empty conversation. **Fix:** Persist current session to named file FIRST, then create fresh session, then reset.
 
-```json
-{
-  "id": "openai/gpt-4o-mini",
-  "name": "OpenAI GPT-4o mini",
-  "capabilities": ["streaming", "tool-calling"],
-  "limits": { "max_input_tokens": 131072, "max_output_tokens": 4096 },
-  "rate_limit_tier": "low"
-}
-```
+3. **Profile clobbers tool descriptions** — Replacing `baseSystemPrompt` without calling `refreshSystemPrompt()` makes tools invisible to the model. **Fix:** Always update `baseSystemPrompt` then call `refreshSystemPrompt()`. Never write `conv.Messages[0]` directly.
 
-Missing required OpenAI fields (`created`, `object`, `owned_by`) mean `openai-go` SDK's `ListAutoPaging` will fail. Implement `ListModels()` with a direct `net/http` call. **Bonus:** The `limits.max_input_tokens` field finally gives `GetContextLength()` real data to return.
+4. **fsnotify watches wrong directory after migration** — If migration runs after `ConfigDir()` returns, the watcher watches the old path. **Fix:** Migration must happen INSIDE `ConfigDir()` before it returns.
 
-### Recommended Default Model
+5. **pflag.Parse() consumes subcommand arguments** — `fenec profile create` fails because pflag sees "profile" as unknown positional arg. **Fix:** Route subcommands via `os.Args` BEFORE `pflag.Parse()`.
 
-**`openai/gpt-4o-mini`** — Low rate-limit tier (150 RPD free), available to all Copilot plan levels, supports both tool calling and streaming, widely tested. Good balance of capability and daily quota.
+6. **ContextTracker ghost token counts** — After `/clear`, stale token counts trigger truncation on the first new message. **Fix:** Add `ContextTracker.Reset()` method, call from `/clear`.
 
----
+## Implications for Roadmap
 
-## Resolved Discrepancies
+Based on research, suggested phase structure (6 phases, matching the dependency graph identified in architecture and features research):
 
-### Endpoint URL (Critical)
+### Phase 1: Config Path Migration
+**Rationale:** Foundational — every other feature reads/writes through `ConfigDir()`. Must be correct before anything is built on top. Both architecture and features research independently identified this as the first dependency.
+**Delivers:** `~/.config/fenec` as canonical path on macOS, automatic migration of all existing data (config, sessions, tools, history, system.md), user feedback message.
+**Addresses:** Table stake: `~/.config/fenec` canonical path, auto-migration from old path.
+**Avoids:** Pitfall #4 (fsnotify watches wrong dir) — migration inside `ConfigDir()`; Pitfall #6 (incomplete migration) — move entire directory tree; Pitfall #14 (non-macOS guard).
 
-| Researcher | URL Referenced | Status |
-|-----------|---------------|--------|
-| FEATURES.md | `https://models.inference.ai.azure.com` (implicit) | ❌ Wrong — old Azure endpoint |
-| ARCHITECTURE-copilot-auth.md | `https://models.github.ai` | ✅ Correct — verified live |
-| LIBRARIES.md | `https://models.github.ai/inference` | ✅ Correct — verified from 3 official sources |
-| RISKS.md | `https://models.github.ai` | ✅ Correct — verified live, deprecation headers confirmed |
+### Phase 2: /clear REPL Command
+**Rationale:** Fully independent of all other features — only touches REPL internals. Quick win that delivers immediate user value. BUT has 3 interacting critical pitfalls that must be handled carefully.
+**Delivers:** `/clear` command that resets conversation, saves previous session, resets token tracking, updates help text.
+**Addresses:** Table stake: conversation reset without quitting.
+**Avoids:** Pitfall #1 (sync.Once) — resettable auto-save guard; Pitfall #2 (empty overwrite) — save-before-clear sequence; Pitfall #10 (ghost tokens) — ContextTracker.Reset(); Pitfall #15 (UX) — confirmation message with session ID.
 
-**Resolution: Use `https://models.github.ai`.**
+### Phase 3: Profile Package
+**Rationale:** Core data model needed by both `--profile` flag (Phase 5) and profile subcommands (Phase 6). Building the package in isolation enables thorough testing of TOML frontmatter parsing edge cases before integration.
+**Delivers:** `internal/profile/` package — Profile struct, `Load()`, `List()`, `Create()`, frontmatter parser with edge case handling, profile name validation.
+**Addresses:** Differentiator: TOML frontmatter format, provider override in profiles.
+**Avoids:** Pitfall #8 (frontmatter edge cases) — table-driven tests for 9 cases; Pitfall #13 (special characters) — `[a-z0-9_-]` validation; Pitfall #17 (provider validation timing) — validate at activation, not creation.
 
-FEATURES.md was written for the broader v1.1 multi-provider milestone (scoped to an earlier research cycle) and references the old Azure endpoint in its context examples. The three v1.2-specific researchers all independently confirmed the endpoint migration. The old endpoint (`models.inference.ai.azure.com`) was deprecated July 17, 2025 and **shuts down October 17, 2025**. This is not a minor version difference — building against the old endpoint guarantees a hard failure within months.
-
-The change blog post is confirmed: https://github.blog/changelog/2025-07-17-deprecation-of-azure-endpoint-for-github-models/
-
-### Model Name Format
-
-- **Old endpoint:** Short names, e.g., `gpt-4o-mini`
-- **New endpoint:** Publisher-prefixed names, e.g., `openai/gpt-4o-mini`
-
-Both short and publisher-prefixed names work for inference on the new endpoint, but the catalog returns publisher-prefixed IDs. Fenec should use publisher-prefixed names throughout (they compose naturally with `copilot/openai/gpt-4o-mini` in the `provider/model` routing).
-
-### `/v1/models` Response Format
-
-RISKS.md and LIBRARIES.md both verified this independently but describe it slightly differently. The authoritative description: the response IS `{"data": [...]}` (not a bare array), but items lack `created`, `object`, and `owned_by` fields that the openai-go SDK requires. Result: the SDK's model listing code fails; custom HTTP parsing is required.
-
----
-
-## Implementation Blueprint
-
-### Architecture Decision: Thin Wrapper
-
-```
-copilot.Provider
-├── inner: *openai.Provider          // Embedded — handles StreamChat, Ping
-│         baseURL: models.github.ai/inference
-│         apiKey: gh token
-│
-└── catalog: []ghModel (cached)       // Custom — handles ListModels, GetContextLength
-          fetched from: models.github.ai/v1/models
-          auth: Bearer <gh token>
-```
-
-```go
-// internal/provider/copilot/copilot.go
-
-const (
-    inferenceBaseURL = "https://models.github.ai/inference"
-    modelsURL        = "https://models.github.ai/v1/models"
-)
-
-type Provider struct {
-    inner      *openai.Provider   // delegates StreamChat, Ping
-    token      string
-    httpClient *http.Client
-    mu         sync.RWMutex
-    catalog    []ghModel          // lazy-loaded, cached for session
-}
-
-func (p *Provider) Name() string { return "copilot" }
-// ListModels  → custom HTTP GET to modelsURL, parse {data:[...]}
-// GetContextLength → return catalog[model].Limits.MaxInputTokens
-// StreamChat  → delegate to p.inner.StreamChat (unchanged)
-// Ping        → call fetchCatalog (validates auth + connectivity)
-```
-
-### Token Resolution
-
-```go
-func resolveToken() (string, error) {
-    if t := os.Getenv("GH_TOKEN"); t != ""     { return t, nil }
-    if t := os.Getenv("GITHUB_TOKEN"); t != "" { return t, nil }
-    return tokenFromGhCLI()
-}
-
-func tokenFromGhCLI() (string, error) {
-    ghPath, err := exec.LookPath("gh")
-    if err != nil {
-        return "", fmt.Errorf("copilot provider requires gh CLI — install from https://cli.github.com")
-    }
-    cmd := exec.Command(ghPath, "auth", "token", "--hostname", "github.com")
-    out, err := cmd.Output()
-    // ... handle exit errors with actionable messages
-}
-```
-
-**Do NOT add `go-gh/v2` as a dependency** — it pulls 20+ transitive packages (survey, glamour, lipgloss, etc.) for a function achievable in ~30 lines.
-
-### Config Integration
-
-```toml
-# ~/.config/fenec/config.toml
-[providers.copilot]
-type = "copilot"
-# No url or api_key — auto-resolved from gh CLI or env vars
-```
-
-```go
-// config/toml.go — add one case to CreateProvider:
-case "copilot":
-    return copilotProvider.New()   // No args needed
-```
-
-### Model Listing Implementation
-
-```go
-func (p *Provider) fetchCatalog(ctx context.Context) ([]ghModel, error) {
-    // Double-checked locking for goroutine-safe lazy init
-    p.mu.RLock()
-    if p.catalog != nil { defer p.mu.RUnlock(); return p.catalog, nil }
-    p.mu.RUnlock()
-
-    p.mu.Lock()
-    defer p.mu.Unlock()
-    if p.catalog != nil { return p.catalog, nil }
-
-    req, _ := http.NewRequestWithContext(ctx, "GET", modelsURL, nil)
-    req.Header.Set("Authorization", "Bearer "+p.token)
-
-    resp, err := p.httpClient.Do(req)
-    // ... decode {"data": [...]} into []ghModel
-    // cache in p.catalog
-}
-```
-
-### Error Messages (User-Facing)
-
-| Condition | Message |
-|-----------|---------|
-| `gh` not found | `"copilot provider requires the GitHub CLI (gh). Install: https://cli.github.com"` |
-| `gh` not authenticated | `"GitHub CLI is not authenticated. Run: gh auth login"` |
-| API 401 | `"GitHub token is invalid or expired. Run 'gh auth login' to refresh."` (if `GH_TOKEN` set, add: "If GH_TOKEN is set, ensure it has models:read scope") |
-| API 429 | `"Rate limited. Try again in N seconds."` (parse `x-ratelimit-reset-requests` header) |
-| Daily limit | `"Daily request limit reached. Resets at midnight UTC."` |
-| Content filter | `"This request was blocked by content safety filters."` (code: `content_filter`) |
-| Unknown model | Surface model name from error JSON (`code: unknown_model`) |
-
-### o1/o3/reasoning Model Handling
-
-Models like `o1`, `o1-mini`, `o3`, `o4-mini` do not support streaming. The `github/gh-models` CLI explicitly disables streaming for these:
-
-```go
-// In buildParams() or at StreamChat entry point:
-if isReasoningModel(model) {
-    // Disable streaming, use non-streaming path
-}
-```
-
-Detection: check catalog `capabilities` array for absence of `"streaming"`, or match model name patterns.
-
----
-
-## Risk Register
-
-| # | Risk | Severity | Likelihood | Mitigation |
-|---|------|----------|------------|------------|
-| 1 | **Old endpoint used** — building against deprecated `models.inference.ai.azure.com` | 🔴 Critical | None if research is followed | Use `models.github.ai` exclusively. Never reference old URL in code or docs. |
-| 2 | **SDK base URL mismatch** — can't use one SDK instance for both chat + model listing | 🔴 Critical | Certain without this fix | Use SDK only for `/inference` (chat). Direct HTTP for `/v1/models`. |
-| 3 | **Rate limits** — 50 RPD on high-tier models (free tier) | 🟡 High | Very likely for active users | Show `x-ratelimit-remaining-requests` in debug mode. Clear messages on 429. Default to low-tier model (`gpt-4o-mini`). |
-| 4 | **Azure Content Safety filters** — always-on, cannot be disabled | 🟡 High | Likely for power users | Catch `content_filter` error code explicitly. Show a human-readable message. Don't retry filtered requests. |
-| 5 | **Token expiry or revocation mid-session** | 🟡 High | Possible | On 401, show: "token may have been revoked, restart fenec and run gh auth login". Do NOT auto-retry (adds complexity, harms session UX). |
-| 6 | **`gh` CLI not installed** | 🟢 Medium | Common for new users | `exec.LookPath("gh")` at provider init — fail fast with install link before any API call. |
-| 7 | **`GH_TOKEN` env var is a PAT without `models:read`** | 🟢 Medium | Uncommon | On 401, check if `GH_TOKEN` is set and hint about required scope. |
-| 8 | **Model requires higher Copilot plan** (o1, o3, gpt-5, deepseek-r1 need Pro+) | 🟡 High | Likely for users on free tier | Don't filter catalog — show all models. Handle plan-restriction errors gracefully. |
-| 9 | **Empty tool call responses** from models without `tool-calling` capability | 🟢 Medium | Possible | Check `capabilities` field; warn if selected model lacks `"tool-calling"`. Handle empty `tool_calls: []` without crashing. |
-| 10 | **API breaking changes** (public preview, migrated once already) | 🟡 High | Possible | Make base URLs configurable in TOML (`url` field can override default). Document the config key. |
-
----
-
-## Requirements Implications
-
-### Must Be In Scope (v1.2)
-
-1. **New `copilot` provider type** in `config/toml.go` — `case "copilot": return copilotProvider.New()`
-2. **Token resolution** — `GH_TOKEN` → `GITHUB_TOKEN` → `gh auth token`, with actionable error messages for every failure mode
-3. **Chat/streaming/tool calling via openai provider embedding** — no new implementation needed, reuse existing
-4. **Custom model listing** — direct HTTP GET to `https://models.github.ai/v1/models`, parse `{"data":[...]}` with GitHub-specific schema
-5. **`GetContextLength()` from catalog** — return `limits.max_input_tokens` (solves the current `return 0, nil` problem in the openai provider for all GitHub Models)
-6. **`Ping()` via catalog fetch** — validates auth and connectivity in one call
-7. **Content filter error handling** — catch `content_filter` error code, surface a user-friendly message
-8. **Rate limit messaging** — 429 errors must show how long to wait, daily exhaustion must be distinguishable from per-minute limits
-9. **`gh` not-installed and not-authenticated detection** — fail at init, not at first API call
-
-### Should Be In Scope (adds polish, low complexity)
-
-- **Capability warning** — warn when selected model lacks `"tool-calling"` in catalog
-- **Rate limit tier in model listing** — show `rate_limit_tier` (low/high/custom) in `/model` REPL output
-- **Configurable base URL** — allow `url` override in TOML for forward-compatibility if GitHub migrates endpoints again
-- **Optional org attribution** — `org` field in TOML switches base URL to `https://models.github.ai/orgs/{org}/inference`
-
-### Out of Scope (v1.2)
-
-- **Automatic token refresh on 401** — adds complexity, not needed for long-lived OAuth tokens; handle as clear error
-- **Adding `go-gh/v2` dependency** — 20+ transitive deps for 30 lines of code; implement token resolution inline
-- **`X-GitHub-Api-Version` header** — not required for inference; add only if a specific feature demands it
-- **Custom-tier model support (o1, o3, gpt-5)** — requires Copilot Pro+; handle gracefully but don't optimize for
-- **At-scale / organization billing integration** — out of scope for personal dev tool use case
-- **Catalog caching to disk** — in-memory cache per session is sufficient; disk cache adds complexity for minimal gain
-
----
-
-## Open Questions
-
-1. **Does `GetContextLength()` need a fallback when the model isn't in the catalog?** The current openai provider returns `0, nil` for unknown models. Should copilot provider do the same (return 0 as "unknown, use provider default") or error? **Recommendation:** Return `0, nil` — consistent with existing behavior, non-fatal.
-
-2. **Should `Ping()` fail if catalog fetch fails with a non-auth error (e.g., network timeout)?** The `fetchCatalog` approach makes `Ping()` dependent on model listing availability, which may be overly strict. **Recommendation:** If catalog fetch fails on a 5xx or network error, return an error from `Ping()`. On 401, return a specific auth error.
-
-3. **How should the `/model` REPL command display GitHub Models?** Models have a compound `publisher/model` format. When a user runs `/model` inside a copilot session, should it display `openai/gpt-4o-mini` or `gpt-4o-mini`? **Recommendation:** Display full `publisher/model` IDs — this is what inference accepts and what the catalog returns.
-
-4. **Token caching across provider reinitializations** — If `fenec` supports hot-reload of provider config, does a new `copilot.New()` call always shell out to `gh auth token`? **Recommendation:** Yes — the subprocess costs ~50-100ms but ensures the token is always fresh. Only cache within a single `Provider` instance's lifetime.
-
-5. **Rate limit header discrepancy** — RISKS.md noted that live API responses show 20,000 RPM in headers but docs say 10-15 RPM for free tier. This may reflect Copilot Business limits (the test account). Don't hardcode rate limit values — always read from response headers.
-
----
+### Phase 4: --system Flag
+**Rationale:** Simpler than `--profile` (just reads a file and uses as system prompt), establishes the prompt-override pattern that profiles build on. Good warmup for the more complex profile flag integration.
+**Delivers:** `--system <file>` CLI flag that overrides the system prompt for one invocation.
+**Addresses:** Table stake: ad-hoc system prompt override.
+**Avoids:** Pitfall #9 (precedence ambiguity) — define `--system` > profile > `system.md` > default chain explicitly.
+
+### Phase 5: --profile Flag
+**Rationale:** Uses profile package from Phase 3. Modifies the startup flow in main.go for model/provider/prompt resolution. More complex integration than `--system` because it affects both model and prompt. Must come after the profile package is proven.
+**Delivers:** `--profile <name>` / `-P` flag, priority-chain resolution for model and prompt, composable with `--model` and `--system` overrides.
+**Addresses:** Table stake: named profile selection via flag, profile = prompt + model override.
+**Avoids:** Pitfall #3 (tool descriptions clobbered) — use `refreshSystemPrompt()`; Pitfall #7 (stale context length) — extract shared `switchModel()` method; Pitfall #9 (precedence) — documented priority chain; Pitfall #12 (session lacks profile) — add Profile field to Session struct.
+
+### Phase 6: Profile Subcommands
+**Rationale:** Most invasive to `main.go` structure — adds subcommand routing. Benefits from having profile loading already tested via `--profile` (Phase 5). Requires pre-pflag dispatch pattern.
+**Delivers:** `fenec profile list`, `fenec profile create <name>`, `fenec profile edit <name>` — with `$EDITOR` integration.
+**Addresses:** Table stakes: profile listing, differentiators: interactive creation, edit subcommand.
+**Avoids:** Pitfall #5 (pflag consumes args) — route via `os.Args` before `pflag.Parse()`; Pitfall #16 (pipe mode interference) — subcommand dispatch before pipe detection.
+
+### Phase Ordering Rationale
+
+- **Dependency-driven:** Config migration → profile package → flags → subcommands follows the strict dependency graph both architecture and features research identified independently
+- **Risk-front-loaded:** Phases 1-2 address the most critical pitfalls (data loss, silent state corruption) early when the codebase is still simple
+- **Progressive integration:** Each phase touches one more layer — Phase 1 is config-only, Phase 2 is REPL-only, Phase 3 is new package, Phases 4-5 modify main.go incrementally, Phase 6 restructures main.go routing
+- **Test confidence builds:** Profile package is proven in isolation (Phase 3) before being wired into startup flow (Phase 5), so integration bugs are easier to isolate
+
+### Research Flags
+
+Phases with standard patterns (skip `/gsd-research-phase`):
+- **Phase 1 (Config Migration):** Well-documented `os.Rename()` behavior, migration logic is ~25 lines, Go stdlib only
+- **Phase 2 (/clear):** All APIs verified in source, but implementation must follow exact save-before-clear sequence from pitfalls research
+- **Phase 3 (Profile Package):** Frontmatter parsing is straightforward string splitting + existing `toml.Decode()`
+- **Phase 4 (--system flag):** Trivial flag addition with file read — established pflag pattern
+- **Phase 6 (Subcommands):** Simple `os.Args` routing, `$EDITOR` integration is standard `os/exec` pattern
+
+Phases that may benefit from `/gsd-research-phase`:
+- **Phase 5 (--profile flag):** Most complex integration — touches startup flow, model resolution, provider switching, context tracker updates, session persistence. Multiple interacting pitfalls. Worth a phase research pass to map exact code insertion points and test scenarios.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Endpoint URLs | HIGH | Verified with live `curl` calls on 2026-04-14. Two independent researchers confirmed. Official GitHub blog post confirms deprecation. |
-| Auth flow | HIGH | Live tested. `go-gh` source analyzed for priority chain. OAuth token scopes verified empirically. |
-| openai-go/v3 compatibility | HIGH | Chat/tools/streaming verified against official `github/codespaces-models` Python samples (same pattern). SDK source code analyzed for URL construction. |
-| Model listing approach | HIGH | `ListAutoPaging` failure confirmed from SDK source. Catalog response format verified live. `{"data":[...]}` wrapper confirmed. |
-| Rate limits | MEDIUM | Headers verified live, but observed values don't match docs (likely plan-dependent). 429 behavior not directly tested. |
-| Content filter behavior | HIGH | Error format verified live with intentional policy violation. |
-| Token expiry / 401 mid-session | MEDIUM | OAuth token lifetime from docs. Mid-session revocation behavior extrapolated — not directly tested. |
+| Stack | HIGH | All APIs verified via `go doc`, existing deps confirmed in `go.mod`, zero new dependencies |
+| Features | HIGH | Competitive analysis of 4 real tools (aichat, llm, mods, fabric) with source code review |
+| Architecture | HIGH | Based on direct codebase audit — all integration points, line numbers, and APIs verified in source |
+| Pitfalls | HIGH | All 17 pitfalls derived from codebase audit with specific line references and verified Go stdlib behavior |
 
-**Overall confidence: HIGH.** The core implementation path is proven. Remaining uncertainty is operational (rate limit tiers, plan-dependent behavior) — none of it blocks implementation.
+**Overall confidence:** HIGH
 
-### Gaps to Address During Implementation
+### Gaps to Address
 
-- **Verify `/v1/models` response format is stable** — The catalog endpoint is the newer of the two APIs. Confirm the `{"data":[...]}` wrapper and `capabilities`/`limits` fields are present in production before relying on them.
-- **Test with Copilot Free account** — All live testing was done with a Business/higher account. Free tier behavior (especially model availability filtering and rate limits) needs validation.
-- **Confirm o1/o3 streaming behavior** — The `gh-models` CLI disables streaming for o1 family. Verify this is still true for the new endpoint; model capability flags in catalog should indicate this.
-
----
+- **Cross-device rename fallback:** STACK.md says same-filesystem rename is guaranteed (both paths under `$HOME`), but ARCHITECTURE.md includes a `copyDirRecursive` fallback. Decide during Phase 1 whether to implement the fallback or trust same-FS assumption. Recommendation: skip fallback — `$HOME` subdirectories are always same filesystem on macOS.
+- **`--system` + `--profile` interaction:** FEATURES.md originally said these should be mutually exclusive (error). ARCHITECTURE.md and PITFALLS.md say they should be composable (`--system` overrides prompt, keeps profile's model). **Go with composable** — the architecture/pitfalls position is more flexible and avoids artificial restrictions.
+- **Session profile field:** Pitfall #12 identifies that Session JSON needs a `Profile` field for `/load` to restore the correct system prompt. This isn't mentioned in FEATURES.md or ARCHITECTURE.md. Address during Phase 5 implementation — add the field to Session struct.
+- **`sync.Once` replacement approach:** PITFALLS.md suggests `bool` + `sync.Mutex`. ARCHITECTURE.md suggests `r.autoSaved = sync.Once{}` (zero-value reset). The `bool` + `Mutex` approach is safer and more explicit. Use that.
 
 ## Sources
 
-### Primary (HIGH confidence — verified live)
-- [github/gh-models source — azure_client_config.go](https://github.com/github/gh-models/blob/main/internal/azuremodels/azure_client_config.go) — canonical endpoint URLs
-- [github/gh-models source — azure_client.go](https://github.com/github/gh-models/blob/main/internal/azuremodels/azure_client.go) — auth headers, SSE streaming, org endpoints
-- [github/codespaces-models — Python OpenAI SDK samples](https://github.com/github/codespaces-models/tree/main/samples/python/openai) — base URL, auth, tool calling, streaming patterns
-- [GitHub REST API — Models Inference](https://docs.github.com/en/rest/models/inference) — official API spec
-- [GitHub REST API — Models Catalog](https://docs.github.com/en/rest/models/catalog) — catalog response format
-- [GitHub Deprecation Blog](https://github.blog/changelog/2025-07-17-deprecation-of-azure-endpoint-for-github-models/) — confirmed sunset Oct 17, 2025
-- openai-go/v3 SDK source (v3.31.0, local) — URL construction, pagination format, retry behavior
-- Live API calls on 2026-04-14 — endpoints, error responses, rate limit headers, tool calling
+### Primary (HIGH confidence)
+- `go doc github.com/BurntSushi/toml Decode` — confirmed `func Decode(data string, v any) (MetaData, error)`
+- `go doc github.com/spf13/pflag FlagSet` — confirmed `NewFlagSet()` with scoped parsing
+- `go doc os UserConfigDir` — confirmed macOS returns `~/Library/Application Support`
+- `go doc os UserHomeDir` — confirmed returns `$HOME` on Unix/macOS
+- Direct codebase audit: `internal/config/config.go`, `internal/repl/repl.go`, `internal/chat/`, `internal/session/`, `main.go` — all integration points verified with line numbers
+- Competitive source code: aichat (`src/config/role.rs`), mods (Go source), fabric (Go source)
 
 ### Secondary (MEDIUM confidence)
-- [GitHub Models Quickstart](https://docs.github.com/en/github-models/quickstart) — endpoint migration overview
-- [tigillo/githubmodels-go](https://github.com/tigillo/githubmodels-go) — community Go client confirming patterns
-- go-gh/v2 source analysis — token resolution priority chain
+- Hugo/Zola TOML frontmatter `+++` convention — well-established but informal standard
+- llm CLI docs at `llm.datasette.io` — official documentation, not source code
 
 ---
-
-*Research completed: 2026-04-14*
-*Milestone: v1.2 — copilot provider*
+*Research completed: 2025-07-18*
 *Ready for roadmap: yes*

@@ -1,618 +1,518 @@
-# Architecture Patterns: Multi-Provider LLM Support
+# Architecture: Profiles, Subcommands & Config Migration
 
-**Domain:** Multi-provider abstraction for existing AI agent platform
-**Researched:** 2026-04-12
+**Domain:** Integrating profiles, CLI subcommands, and config path migration into existing Fenec CLI
+**Researched:** 2025-07-14
 **Overall confidence:** HIGH
 
-## Current Architecture: Where Ollama Types Leak
+## Current Architecture Summary
 
-The existing codebase has **six Ollama type contamination points** that must be addressed:
+The existing codebase follows a clean layered structure:
 
-| Location | Ollama Type Used | Impact |
-|----------|-----------------|--------|
-| `chat.ChatService` interface | `api.Tools`, `api.Message`, `api.Metrics` in `StreamChat` signature | **Critical** -- this is the main abstraction boundary |
-| `chat.Conversation` | `[]api.Message` as the message store | **Critical** -- every component touches this |
-| `tool.Tool` interface | `api.Tool` in `Definition()`, `api.ToolCallFunctionArguments` in `Execute()` | **Critical** -- every tool implements this |
-| `tool.Registry` | `api.Tools` in `Tools()`, `api.ToolCall` in `Dispatch()` | **Critical** -- bridges tools to chat |
-| `session.Session` | `[]api.Message` in `Messages` field (JSON serialized) | **High** -- persisted to disk, migration needed |
-| `repl.REPL.sendMessage` | Direct access to `msg.ToolCalls`, `tc.Function.Name`, `tc.ID` | **Moderate** -- consumer code, follows the interfaces |
+```
+main.go (340 lines)
+  ├── pflag parsing (global FlagSet, no subcommands)
+  ├── config.ConfigDir() → config.LoadOrCreateConfig()
+  ├── ProviderRegistry build from config.Providers
+  ├── --model flag → provider/model resolution
+  ├── config.LoadSystemPrompt() → system.md or default
+  ├── Tool registry setup
+  └── repl.NewREPL(provider, model, systemPrompt, ...) → r.Run()
+
+internal/config/
+  ├── config.go    — ConfigDir(), LoadSystemPrompt(), SessionDir(), ToolsDir(), HistoryFile()
+  ├── toml.go      — Config struct, LoadConfig(), CreateProvider()
+  ├── registry.go  — ProviderRegistry (thread-safe provider map)
+  └── watcher.go   — Hot-reload via fsnotify
+
+internal/repl/
+  ├── repl.go      — REPL struct, Run(), sendMessage(), slash command dispatch
+  └── commands.go  — ParseCommand(), helpText
+
+internal/chat/     — Conversation, ContextTracker
+internal/provider/ — Provider interface + ollama/openai/copilot adapters
+internal/session/  — Session persistence (JSON files)
+internal/tool/     — Tool registry, built-in tools, Lua tools
+```
+
+### Key Data Flow: System Prompt
+
+```
+config.LoadSystemPrompt()  →  main.go (systemPrompt string)
+                                  ↓
+                           repl.NewREPL(systemPrompt)
+                                  ↓
+                           baseSystemPrompt = systemPrompt
+                           systemPrompt += tool descriptions
+                                  ↓
+                           chat.NewConversation(model, systemPrompt)
+                                  ↓
+                           conv.Messages[0] = {Role: "system", Content: systemPrompt}
+```
+
+### Key Data Flow: Provider/Model Resolution
+
+```
+cfg.DefaultProvider + cfg.DefaultModel  →  providerRegistry.Default()
+         ↓                                          ↓
+--model flag override  →  provider/model split  →  p, modelName
+         ↓
+p.Ping() → p.ListModels() → defaultModel
+         ↓
+repl.NewREPL(p, defaultModel, activeProviderName, ...)
+```
+
+### Key Data Flow: Config Paths
+
+All paths funnel through `config.ConfigDir()`:
+```
+ConfigDir() = os.UserConfigDir() + "/fenec"
+  ├── config.toml       (LoadOrCreateConfig)
+  ├── system.md         (LoadSystemPrompt)
+  ├── sessions/         (SessionDir)
+  ├── tools/            (ToolsDir)
+  └── history           (HistoryFile)
+```
+
+On macOS: `os.UserConfigDir()` → `~/Library/Application Support`
+On Linux: `os.UserConfigDir()` → `$XDG_CONFIG_HOME` or `~/.config`
 
 ## Recommended Architecture
 
-### Design Principle: Own Your Types
-
-Introduce Fenec-native message and tool types that sit between the REPL/tool layer and the provider implementations. Each provider adapter translates to/from these types. This is the standard adapter pattern, not a generic LLM framework.
-
-**Why not just use OpenAI types as the universal format?** Because:
-1. Ollama's native API has features OpenAI lacks (thinking/reasoning output, model management, `num_ctx` control)
-2. Tying to OpenAI types creates the same vendor lock-in we're trying to escape
-3. Fenec-native types can evolve independently of any provider's API changes
-
-**Why not use a library like `any-llm-go` or `langchaingo`?** Because:
-1. Fenec has a custom tool system with Lua extensibility -- generic libraries don't model this
-2. The provider count is small (2 protocols: Ollama native, OpenAI-compatible) -- the abstraction cost of a generic library exceeds the integration cost of 2 adapters
-3. Dependency weight: `any-llm-go` pulls 8+ provider SDKs; we need exactly 2
-
 ### Component Boundaries
 
-```
-                    main.go (wiring)
-                         |
-                    internal/repl
-                    (uses fenec types)
-                         |
-              +---------+----------+
-              |                    |
-    internal/provider         internal/tool
-    (Provider interface)      (uses fenec types)
-         |         |               |
-   +-----+----+   +-------+   internal/lua
-   |          |            |   (uses fenec types)
- ollama/    openai/     internal/model
- adapter    adapter     (fenec-native types)
-   |          |
- Ollama    openai-go/v3
- api pkg   (pointed at any
-            compatible endpoint)
+| Component | Responsibility | New/Modified | Communicates With |
+|-----------|---------------|--------------|-------------------|
+| `internal/profile/` | Profile struct, load, parse, list, create, validate | **NEW** | config (paths) |
+| `internal/config/config.go` | ConfigDir() now returns `~/.config/fenec`; ProfilesDir(); MigrateIfNeeded() | **MODIFIED** | main.go, profile |
+| `main.go` | Subcommand routing, `--profile`/`--system` flags, migration call | **MODIFIED** | config, profile, repl |
+| `internal/repl/repl.go` | `/clear` command handler | **MODIFIED** | chat.Conversation |
+| `internal/repl/commands.go` | Updated helpText with `/clear` | **MODIFIED** | — |
+
+### 1. Profile System (`internal/profile/`)
+
+**New package.** Profiles are markdown files with TOML frontmatter stored in `~/.config/fenec/profiles/`.
+
+#### Profile File Format
+
+```markdown
++++
+model = "copilot/gpt-4o"
++++
+
+You are a senior Go developer. Always use table-driven tests...
 ```
 
-### New Package: `internal/model` -- Fenec-Native Types
+Use `+++` delimiters for TOML frontmatter (Hugo convention — unambiguous vs `---` which is YAML). The project already depends on `github.com/BurntSushi/toml`, so parsing is free.
 
-This is the keystone package. Everything else depends on it. It depends on nothing.
+#### Profile Struct
 
 ```go
-package model
+package profile
 
-// Message is Fenec's provider-agnostic message type.
-type Message struct {
-    Role       Role       `json:"role"`
-    Content    string     `json:"content"`
-    Thinking   string     `json:"thinking,omitempty"`
-    ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-    ToolCallID string     `json:"tool_call_id,omitempty"`
-}
-
-type Role string
-
-const (
-    RoleSystem    Role = "system"
-    RoleUser      Role = "user"
-    RoleAssistant Role = "assistant"
-    RoleTool      Role = "tool"
-)
-
-// ToolCall represents a model's request to invoke a tool.
-type ToolCall struct {
-    ID       string           `json:"id"`
-    Function ToolCallFunction `json:"function"`
-}
-
-type ToolCallFunction struct {
-    Name      string         `json:"name"`
-    Arguments map[string]any `json:"arguments"`
-}
-
-// ToolDef is a provider-agnostic tool definition.
-// The JSON shape matches both OpenAI and Ollama tool schemas.
-type ToolDef struct {
-    Type     string      `json:"type"` // always "function"
-    Function FunctionDef `json:"function"`
-}
-
-type FunctionDef struct {
-    Name        string        `json:"name"`
-    Description string        `json:"description"`
-    Parameters  ParametersDef `json:"parameters"`
-}
-
-type ParametersDef struct {
-    Type       string                 `json:"type"` // "object"
-    Properties map[string]PropertyDef `json:"properties"`
-    Required   []string               `json:"required,omitempty"`
-}
-
-type PropertyDef struct {
-    Type        string `json:"type"`
-    Description string `json:"description"`
-}
-
-// StreamMetrics captures token usage from any provider.
-type StreamMetrics struct {
-    PromptTokens     int
-    CompletionTokens int
+type Profile struct {
+    Name   string // derived from filename (without .md extension)
+    Model  string // "provider/model" or bare "model" — uses same syntax as --model flag
+    Prompt string // markdown body = system prompt
 }
 ```
 
-**Key design choice: `Arguments` is `map[string]any`, not a custom ordered-map type.** The current Ollama `ToolCallFunctionArguments` is a `wk8/go-ordered-map` which is fine for Ollama but the OpenAI client returns a JSON string. `map[string]any` is the simplest common denominator that both can produce. Tool implementations already call `args.Get("key")` which maps trivially to `args["key"]`.
+**Design decisions:**
+- **No separate `provider` field.** The `--model` flag already supports `provider/model` syntax. Profiles reuse the same parsing. One field, one syntax, one code path.
+- **Name from filename**, not a field in frontmatter. `profiles/coder.md` → name is `coder`. No sync issues between filename and content.
+- **Prompt is the entire markdown body** after the frontmatter. No special parsing needed.
+- **Model is optional.** If omitted, uses config default. This lets profiles be prompt-only.
 
-### New Package: `internal/provider` -- Provider Interface
+#### Parsing Logic
 
 ```go
-package provider
+func Load(profilesDir, name string) (*Profile, error) {
+    data, err := os.ReadFile(filepath.Join(profilesDir, name+".md"))
+    if err != nil { return nil, err }
 
-import (
-    "context"
-    "github.com/marad/fenec/internal/model"
-)
-
-// ChatOptions holds per-request settings that vary by provider.
-type ChatOptions struct {
-    Model         string
-    ContextLength int   // Ollama: sets num_ctx. OpenAI-compat: ignored.
-    Think         bool  // Ollama: sets Think field. OpenAI-compat: ignored.
-    Tools         []model.ToolDef
-}
-
-// Provider is the core abstraction for multi-provider support.
-type Provider interface {
-    // Name returns the provider's configured name (e.g., "ollama", "lmstudio").
-    Name() string
-
-    // StreamChat sends messages and streams the response.
-    // onToken is called for each content chunk.
-    // onThinking is called for thinking/reasoning chunks (nil-safe).
-    // Returns the complete assistant message and metrics.
-    StreamChat(ctx context.Context, messages []model.Message, opts ChatOptions,
-        onToken func(string), onThinking func(string)) (*model.Message, *model.StreamMetrics, error)
-
-    // ListModels returns available model names from this provider.
-    ListModels(ctx context.Context) ([]string, error)
-
-    // Ping verifies the provider is reachable.
-    Ping(ctx context.Context) error
-
-    // SupportsThinking reports whether this provider supports thinking output.
-    SupportsThinking() bool
+    // Split on +++ delimiters
+    parts := splitFrontmatter(string(data))
+    
+    var fm struct {
+        Model string `toml:"model"`
+    }
+    if parts.frontmatter != "" {
+        toml.Decode(parts.frontmatter, &fm)
+    }
+    
+    return &Profile{
+        Name:   name,
+        Model:  fm.Model,
+        Prompt: strings.TrimSpace(parts.body),
+    }, nil
 }
 ```
 
-**Why a single `StreamChat` method instead of separate `Chat` and `StreamChat`?** Because Fenec always streams. The current `ChatService.StreamChat` is the only chat method used. Non-streaming would be dead code.
+The `splitFrontmatter()` helper handles `+++` delimiter splitting. No external dependency needed — it's ~15 lines of string splitting.
 
-**Why not `GetContextLength` on the Provider interface?** Because context length discovery is provider-specific. Ollama has `Show()` API for it; OpenAI-compatible APIs don't expose it. Context length comes from config (with optional Ollama auto-detection accessed via the concrete type).
+#### Profile Integration Point in main.go
 
-### Model Resolution
+Profiles slot into the startup flow **between config loading and provider resolution**:
+
+```
+BEFORE (current):
+  1. config.ConfigDir()
+  2. config.LoadOrCreateConfig()
+  3. Build ProviderRegistry
+  4. --model flag → provider/model resolution
+  5. config.LoadSystemPrompt()
+  6. Create REPL
+
+AFTER (with profiles):
+  1. config.ConfigDir()
+  1a. config.MigrateIfNeeded()          ← NEW: config migration
+  2. config.LoadOrCreateConfig()
+  3. Build ProviderRegistry
+  4. --profile flag → profile.Load()     ← NEW: may override model + prompt
+  5. --system flag → read file            ← NEW: may override prompt
+  6. --model flag → provider/model        (profile may have set this already)
+  7. systemPrompt resolution (profile prompt > --system file > system.md > default)
+  8. Create REPL
+```
+
+**Priority chain for system prompt:**
+1. `--system <file>` (highest — explicit per-invocation override)
+2. `--profile <name>` prompt (profile's markdown body)
+3. `config.LoadSystemPrompt()` (system.md or hardcoded default)
+
+**Priority chain for model:**
+1. `--model <provider/model>` (highest — explicit per-invocation override)
+2. `--profile <name>` model field
+3. `cfg.DefaultModel` / first available model (existing behavior)
+
+This means `--profile coder --model ollama/gemma4` uses the coder profile's system prompt but overrides its model. `--profile coder --system custom.md` uses coder's model but overrides the prompt. Both overrides are useful and natural.
+
+### 2. CLI Subcommands (Manual Routing, No Cobra)
+
+**Do NOT add cobra.** The project needs exactly one subcommand group (`profile`) with 3 sub-subcommands. Cobra would:
+- Require rewriting the entire CLI layer
+- Add a heavy transitive dependency
+- Be massive overkill for 3 commands
+
+**Instead:** Use `pflag.Args()` for manual subcommand dispatch. pflag already separates flags from positional arguments.
+
+#### Routing Pattern
 
 ```go
-// ModelResolver maps a "provider/model" string to the right Provider + model name.
-type ModelResolver struct {
-    providers       map[string]Provider
-    defaultProvider string
-}
+func main() {
+    // Parse global flags (existing)
+    modelName := pflag.StringP("model", "m", "", "...")
+    profileName := pflag.StringP("profile", "P", "", "Named profile to activate")
+    systemFile := pflag.String("system", "", "System prompt file override")
+    // ... existing flags ...
+    pflag.Parse()
 
-// Resolve parses "provider/model" or plain "model" (uses default provider).
-func (r *ModelResolver) Resolve(spec string) (Provider, string, error) {
-    parts := strings.SplitN(spec, "/", 2)
-    if len(parts) == 2 {
-        p, ok := r.providers[parts[0]]
-        if !ok {
-            return nil, "", fmt.Errorf("unknown provider: %s", parts[0])
+    // Check for subcommands FIRST
+    args := pflag.Args()
+    if len(args) > 0 {
+        switch args[0] {
+        case "profile":
+            handleProfileSubcommand(args[1:])
+            return
+        default:
+            fmt.Fprintf(os.Stderr, "Unknown command: %s\n", args[0])
+            os.Exit(1)
         }
-        return p, parts[1], nil
     }
-    p, ok := r.providers[r.defaultProvider]
-    if !ok {
-        return nil, "", fmt.Errorf("no default provider configured")
+
+    // ... existing chat startup flow ...
+}
+
+func handleProfileSubcommand(args []string) {
+    if len(args) == 0 {
+        // same as "list"
+        profileList()
+        return
     }
-    return p, spec, nil
-}
-```
-
-### Provider Implementations
-
-#### `internal/provider/ollama` -- Ollama Native Adapter
-
-Wraps the existing `api.Client`. This is mostly a refactor of the current `chat.Client` with type conversion added.
-
-```go
-package ollama
-
-type OllamaProvider struct {
-    client chatAPI  // same internal interface as current chat.Client
-    name   string
-}
-```
-
-Conversion between types is straightforward because Ollama's types map 1:1 to fenec types:
-- `api.Message.Role` (string) <-> `model.Role` (string typedef) -- same values
-- `api.Message.Content` <-> `model.Message.Content`
-- `api.Message.Thinking` <-> `model.Message.Thinking`
-- `api.ToolCall` <-> `model.ToolCall` -- same field structure
-- `api.Tool` <-> `model.ToolDef` -- same JSON shape
-
-The only nontrivial conversion: `api.ToolCallFunctionArguments` (ordered map) -> `map[string]any`. Simple iteration over the ordered map's entries.
-
-Private conversion functions in the adapter package:
-- `fenecToOllamaMessages([]model.Message) []api.Message`
-- `ollamaToFenecMessage(api.Message) model.Message`
-- `fenecToOllamaTools([]model.ToolDef) api.Tools`
-- `ollamaToFenecMetrics(api.Metrics) model.StreamMetrics`
-
-Ollama-specific capabilities (context length detection via `Show()`, model pull) live on the concrete `OllamaProvider` type, not on the `Provider` interface.
-
-#### `internal/provider/openaicompat` -- OpenAI-Compatible Adapter
-
-Uses `github.com/openai/openai-go/v3` with `option.WithBaseURL()` to point at any compatible endpoint.
-
-```go
-package openaicompat
-
-import (
-    oai "github.com/openai/openai-go/v3"
-    "github.com/openai/openai-go/v3/option"
-)
-
-type OpenAIProvider struct {
-    client *oai.Client
-    name   string
-}
-
-func New(name, baseURL, apiKey string) *OpenAIProvider {
-    opts := []option.RequestOption{
-        option.WithBaseURL(baseURL),
-    }
-    if apiKey != "" {
-        opts = append(opts, option.WithAPIKey(apiKey))
-    }
-    client := oai.NewClient(opts...)
-    return &OpenAIProvider{client: client, name: name}
-}
-```
-
-Key differences from Ollama adapter:
-
-| Aspect | Ollama Adapter | OpenAI-Compatible Adapter |
-|--------|---------------|--------------------------|
-| Streaming | Callback-based (`ChatResponseFunc`) | Iterator-based (`stream.Next()`) with `ChatCompletionAccumulator` |
-| Tool call args | Already parsed (ordered map) | JSON string, needs `json.Unmarshal` -> `map[string]any` |
-| Thinking | Supported via `Message.Thinking` | Not supported, `SupportsThinking()` returns false |
-| Context length | Controllable via `num_ctx` | Server-managed, not controllable |
-| Metrics | `api.Metrics.PromptEvalCount`, `.EvalCount` | `usage.prompt_tokens`, `usage.completion_tokens` via `stream_options` |
-| Tool call IDs | Model-dependent (may be empty) | Always server-generated (`call_xxx` format) |
-| Model listing | `/api/tags` endpoint | `/v1/models` endpoint |
-| Health check | `List()` succeeds | `/v1/models` succeeds |
-
-### Modified Package: `internal/tool` -- Decouple from Ollama
-
-The `Tool` interface and `Registry` switch to fenec-native types:
-
-```go
-// BEFORE (current):
-type Tool interface {
-    Name() string
-    Definition() api.Tool
-    Execute(ctx context.Context, args api.ToolCallFunctionArguments) (string, error)
-}
-
-// AFTER:
-type Tool interface {
-    Name() string
-    Definition() model.ToolDef
-    Execute(ctx context.Context, args map[string]any) (string, error)
-}
-```
-
-**Impact on existing tools (8 files):** Every built-in tool's `Definition()` and `Execute()` needs updating. The changes are mechanical:
-- `Definition()`: Replace `api.Tool{...}` with `model.ToolDef{...}` (same field names)
-- `Execute()`: Replace `args.Get("key")` with `args["key"]` (map lookup instead of ordered-map method)
-
-**Impact on `Registry`:**
-```go
-// BEFORE:
-func (r *Registry) Tools() api.Tools
-func (r *Registry) Dispatch(ctx context.Context, call api.ToolCall) (string, error)
-
-// AFTER:
-func (r *Registry) Tools() []model.ToolDef
-func (r *Registry) Dispatch(ctx context.Context, call model.ToolCall) (string, error)
-```
-
-**Impact on `LuaTool`:** Same pattern -- `Definition()` builds `model.ToolDef`, `Execute()` receives `map[string]any`. The `ArgsToLuaTable` helper needs minor adjustment (accepts `map[string]any` instead of ordered map).
-
-### Modified Package: `internal/chat` -- Conversation Keeps Fenec Types
-
-The `chat` package splits:
-1. **Chat client logic** (talking to Ollama) -> moves to `internal/provider/ollama`
-2. **Conversation management** (message list, model tracking) -> stays, uses fenec types
-3. **ContextTracker** -> stays unchanged (only uses int counts)
-
-```go
-// Conversation switches message type:
-type Conversation struct {
-    Messages      []model.Message
-    Model         string
-    ContextLength int
-    Think         bool
-}
-```
-
-The `ChatService` interface is **replaced** by `provider.Provider`. The `chat.Client` type is removed (absorbed into `provider/ollama`).
-
-### Modified Package: `internal/session` -- Migration Required
-
-`Session.Messages` changes from `[]api.Message` to `[]model.Message`.
-
-**Migration risk assessment:** The JSON field names are identical between `api.Message` and `model.Message` (`role`, `content`, `tool_calls`, `tool_call_id`). Existing session files will deserialize correctly **except** for `ToolCallFunctionArguments` which uses a custom ordered-map JSON serialization in the Ollama package. Since `map[string]any` deserializes standard JSON objects, and the ordered-map serializes to standard JSON, this should round-trip. Must verify with test.
-
-### Modified: `internal/repl` -- Minimal Changes
-
-The REPL switches from `chat.ChatService` to `provider.Provider`. The agentic loop field access is unchanged because fenec types mirror the Ollama field names:
-
-```go
-msg.ToolCalls           // same field name, different type
-tc.Function.Name        // same
-tc.Function.Arguments   // same (but map[string]any instead of ordered map)
-tc.ID                   // same
-```
-
-The REPL also needs to pass `ChatOptions` instead of directly building `api.ChatRequest`, but this is a straightforward refactor.
-
-### New: Config-Driven Provider Definitions
-
-Extend `internal/config` with TOML-based provider configuration:
-
-```toml
-# ~/.config/fenec/config.toml
-
-default_provider = "ollama"
-
-[providers.ollama]
-type = "ollama"
-url = "http://localhost:11434"
-
-[providers.lmstudio]
-type = "openai"
-url = "http://localhost:1234/v1"
-
-[providers.openai]
-type = "openai"
-url = "https://api.openai.com/v1"
-api_key_env = "OPENAI_API_KEY"
-```
-
-**Config types:**
-
-```go
-type Config struct {
-    DefaultProvider string                    `toml:"default_provider"`
-    Providers       map[string]ProviderConfig `toml:"providers"`
-}
-
-type ProviderConfig struct {
-    Type      string `toml:"type"`        // "ollama" or "openai"
-    URL       string `toml:"url"`
-    APIKeyEnv string `toml:"api_key_env"` // env var name for API key
-    APIKey    string `toml:"api_key"`     // inline (not recommended)
-}
-```
-
-**Why `api_key_env` instead of just `api_key`?** Config files get committed to dotfile repos. `api_key_env = "OPENAI_API_KEY"` reads from the environment at runtime.
-
-**Backward compatibility:** When no config file exists, default to a single "ollama" provider at `http://localhost:11434`. The app works identically to v1.0 with no config file present.
-
-### `--model provider/model` Syntax
-
-```
-fenec --model gemma4              # Uses default provider
-fenec --model ollama/gemma4       # Explicit provider
-fenec --model lmstudio/qwen3:32b  # LM Studio
-fenec --model openai/gpt-4o      # OpenAI
-```
-
-## Data Flow
-
-### Current Flow (Ollama-only)
-
-```
-User input -> REPL -> chat.Client.StreamChat(conv, tools) -> Ollama API
-                          |
-                    api.Message types throughout
-```
-
-### New Flow (Multi-provider)
-
-```
-User input -> REPL -> provider.StreamChat(messages, opts) -> Adapter -> Backend
-                |                                               |
-          model.Message                                   api.Message (Ollama)
-          model.ToolDef                                   OR
-          model.ToolCall                                  openai types
-```
-
-The REPL and tool system only see `model.*` types. Provider adapters handle all type conversion internally.
-
-## Patterns to Follow
-
-### Pattern 1: Adapter with Internal Conversion Functions
-
-**What:** Each provider adapter has private `toFenec*` and `fromFenec*` functions for type conversion.
-**When:** Every provider implementation.
-**Why:** Keeps conversion logic co-located with the provider that needs it. No conversion logic in shared packages.
-
-```go
-// internal/provider/ollama/convert.go
-func fenecToOllamaMessages(msgs []model.Message) []api.Message { ... }
-func ollamaToFenecMessage(m api.Message) model.Message { ... }
-func fenecToOllamaTools(defs []model.ToolDef) api.Tools { ... }
-```
-
-### Pattern 2: Provider Factory from Config
-
-**What:** Factory function creates the right Provider based on config type.
-**When:** Application startup in `main.go`.
-
-```go
-func NewProvider(name string, cfg config.ProviderConfig) (provider.Provider, error) {
-    switch cfg.Type {
-    case "ollama":
-        return ollama.New(name, cfg.URL)
-    case "openai":
-        apiKey := resolveAPIKey(cfg)
-        return openaicompat.New(name, cfg.URL, apiKey)
+    switch args[0] {
+    case "list":
+        profileList()
+    case "create":
+        if len(args) < 2 { usage(); return }
+        profileCreate(args[1])
+    case "edit":
+        if len(args) < 2 { usage(); return }
+        profileEdit(args[1])
     default:
-        return nil, fmt.Errorf("unknown provider type: %s", cfg.Type)
+        fmt.Fprintf(os.Stderr, "Unknown profile command: %s\n", args[0])
+        os.Exit(1)
     }
 }
 ```
 
-### Pattern 3: Graceful Degradation for Provider-Specific Features
+**Why this works:**
+- `fenec` → no positional args → enters chat mode (existing behavior)
+- `fenec --profile coder` → flag consumed by pflag, no positional args → chat with profile
+- `fenec profile list` → `pflag.Args()` = `["profile", "list"]` → subcommand dispatch
+- `fenec profile create coder` → `pflag.Args()` = `["profile", "create", "coder"]`
+- `fenec --model ollama/gemma4 profile list` → global flags parsed, positional args dispatched
 
-**What:** Features like thinking output and context length auto-detection work when available, silently skip otherwise.
-**When:** Any provider-specific capability.
+**Subcommand implementations:**
+- `profile list` — reads profiles dir, prints name + model for each
+- `profile create <name>` — creates template `.md` file, opens `$EDITOR`
+- `profile edit <name>` — opens existing profile in `$EDITOR`
+
+These are simple enough to live in a `cmd_profile.go` file in `main` package or as functions in `internal/profile/`.
+
+### 3. Config Path Migration
+
+**Problem:** On macOS, `os.UserConfigDir()` returns `~/Library/Application Support`. This is correct per Apple HIG but terrible for CLI tools:
+- Hidden in Finder (Library is hidden by default)
+- Long path with spaces (annoying for shell)
+- Inconsistent with every other CLI tool (`brew`, `gh`, `git` all use `~/.config` or dotfiles)
+
+**Solution:** Change `ConfigDir()` to always return `~/.config/fenec` on macOS. On Linux, `os.UserConfigDir()` already returns `~/.config` when `$XDG_CONFIG_HOME` is unset, so no change needed.
+
+#### Modified ConfigDir()
 
 ```go
-// In REPL:
-if currentProvider.SupportsThinking() {
-    opts.Think = true
+func ConfigDir() (string, error) {
+    if runtime.GOOS == "darwin" {
+        home, err := os.UserHomeDir()
+        if err != nil {
+            return "", err
+        }
+        return filepath.Join(home, ".config", AppName), nil
+    }
+    // Linux/Windows: use standard os.UserConfigDir()
+    base, err := os.UserConfigDir()
+    if err != nil {
+        return "", err
+    }
+    return filepath.Join(base, AppName), nil
 }
-// onThinking callback always passed -- providers that don't support it never call it.
 ```
 
-### Pattern 4: Concrete Type Access for Provider-Specific Operations
-
-**What:** Provider-specific operations (Ollama's `GetContextLength`, `Show`) are accessed by type-asserting the concrete provider, not by bloating the interface.
-**When:** `main.go` startup for context length detection.
+#### Migration Logic
 
 ```go
-// In main.go after creating provider:
-if op, ok := p.(*ollama.OllamaProvider); ok {
-    ctxLen, err := op.GetContextLength(ctx, modelName)
-    // use ctxLen
+func MigrateIfNeeded() error {
+    if runtime.GOOS != "darwin" {
+        return nil // Only macOS needs migration
+    }
+    
+    oldDir := filepath.Join(os.Getenv("HOME"), "Library", "Application Support", AppName)
+    newDir, err := ConfigDir() // now returns ~/.config/fenec
+    if err != nil {
+        return err
+    }
+    
+    oldExists := dirExists(oldDir)
+    newExists := dirExists(newDir)
+    
+    switch {
+    case !oldExists:
+        return nil // Nothing to migrate
+    case oldExists && newExists:
+        slog.Warn("both old and new config dirs exist",
+            "old", oldDir, "new", newDir)
+        return nil // User already migrated or has both; don't touch
+    case oldExists && !newExists:
+        // Migrate: move old → new
+        if err := os.MkdirAll(filepath.Dir(newDir), 0755); err != nil {
+            return err
+        }
+        if err := os.Rename(oldDir, newDir); err != nil {
+            // Cross-device? Fall back to copy+remove
+            return copyDir(oldDir, newDir)
+        }
+        slog.Info("migrated config directory", "from", oldDir, "to", newDir)
+        return nil
+    }
+    return nil
 }
 ```
+
+**Why `os.Rename()` first:**
+- Same filesystem → atomic, instant
+- Cross-device (unlikely for home dir) → fall back to recursive copy
+- No partial state possible with rename
+
+**Why not symlink:** Creates confusion, `ls -la` shows symlink, tools that resolve symlinks get different paths. Clean move is simpler.
+
+**Call site in main.go:**
+```go
+// Very first thing after parsing flags, before ConfigDir() is used
+if err := config.MigrateIfNeeded(); err != nil {
+    slog.Warn("config migration failed", "error", err)
+    // Non-fatal: continue with whatever path works
+}
+```
+
+#### New Helper: ProfilesDir()
+
+```go
+func ProfilesDir() (string, error) {
+    dir, err := ConfigDir()
+    if err != nil {
+        return "", err
+    }
+    return filepath.Join(dir, "profiles"), nil
+}
+```
+
+### 4. /clear Command
+
+Minimal change to REPL. Add to slash command dispatch in `Run()`:
+
+```go
+case "/clear":
+    r.handleClearCommand()
+```
+
+#### Implementation
+
+```go
+func (r *REPL) handleClearCommand() {
+    // Preserve system prompt (always Messages[0] if present)
+    var systemMsg []model.Message
+    if len(r.conv.Messages) > 0 && r.conv.Messages[0].Role == "system" {
+        systemMsg = r.conv.Messages[:1]
+    }
+    
+    // Reset conversation
+    r.conv.Messages = systemMsg
+    
+    // Reset context tracker
+    if r.tracker != nil {
+        r.tracker.Update(0, 0)
+    }
+    
+    // Start fresh session (don't corrupt existing auto-save)
+    r.session = session.NewSession(r.conv.Model)
+    r.autoSaved = sync.Once{} // Reset so new session can auto-save
+    
+    fmt.Fprintln(r.rl.Stdout(), "Conversation cleared.")
+}
+```
+
+**Key detail:** `r.autoSaved = sync.Once{}` resets the sync.Once so the new session can be auto-saved on exit. Without this, the old session's auto-save flag would prevent saving the new conversation.
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Using OpenAI Types as the Universal Message Format
+### Anti-Pattern 1: Cobra for 3 Commands
+**What:** Adding `github.com/spf13/cobra` as a dependency for profile subcommands
+**Why bad:** Cobra requires restructuring the entire CLI into a command tree. The current pflag-based main.go is 340 lines and straightforward. Cobra would triple the boilerplate for 3 simple commands.
+**Instead:** Manual routing with `pflag.Args()`. If a future milestone adds 5+ subcommand groups, migrate to cobra then.
 
-**What:** Making everything speak `openai.ChatCompletionMessageParamUnion` internally.
-**Why bad:** Creates dependency on `openai-go` throughout the codebase. Ollama has features (thinking, `num_ctx`) that OpenAI types can't represent. You'd need out-of-band fields.
-**Instead:** Own your types in `internal/model`. Each adapter converts.
+### Anti-Pattern 2: Profile as TOML-only Config
+**What:** Storing profiles as `.toml` files with a `prompt = "..."` field
+**Why bad:** System prompts are multi-paragraph markdown. Escaping multi-line strings in TOML is awkward (`"""..."""`), no syntax highlighting for the prompt content, terrible editing experience.
+**Instead:** Markdown files with TOML frontmatter. The body IS the prompt. Edit with any markdown editor. Syntax highlighting works naturally.
 
-### Anti-Pattern 2: Interface Bloat with Provider-Specific Methods
+### Anti-Pattern 3: Separate Provider Field in Profiles
+**What:** `model = "gpt-4o"` + `provider = "copilot"` as separate frontmatter fields
+**Why bad:** Duplicates the `provider/model` parsing that `--model` already handles. Two fields to keep in sync. Inconsistent with CLI usage.
+**Instead:** Single `model = "copilot/gpt-4o"` field using the same `provider/model` syntax as `--model` flag. One code path for resolution.
 
-**What:** Adding `GetContextLength()`, `ShowModel()`, `PullModel()` to the Provider interface.
-**Why bad:** Not all providers support these. Methods returning `ErrNotSupported` everywhere.
-**Instead:** Keep Provider small (5 methods). Provider-specific features on concrete type.
+### Anti-Pattern 4: Migrating Config by Copying File-by-File
+**What:** `cp config.toml ...; cp system.md ...; cp -r sessions/ ...`
+**Why bad:** Partial failure leaves split state. Misses files added in future versions. More code, more bugs.
+**Instead:** `os.Rename()` on the entire directory. Atomic on same filesystem. Single operation, zero partial states.
 
-### Anti-Pattern 3: Abstracting Streaming Differences
+### Anti-Pattern 5: Making --system and --profile Mutually Exclusive
+**What:** Error if both `--system` and `--profile` are specified
+**Why bad:** Unnecessary restriction. A user may want a profile's model settings with a different system prompt.
+**Instead:** Clear priority chain: `--system` overrides profile prompt, `--model` overrides profile model. Composable, predictable.
 
-**What:** Creating a generic `StreamReader` or channel-based streaming abstraction.
-**Why bad:** Ollama uses callback streaming. OpenAI-go uses iterator streaming. An abstraction adds latency and complexity for zero benefit -- the Provider interface already hides the mechanism.
-**Instead:** Each adapter uses its native streaming approach, translates to `onToken`/`onThinking` callbacks.
+## Patterns to Follow
 
-### Anti-Pattern 4: Big-Bang Migration
+### Pattern 1: Flag Layering with Clear Priority
+**What:** Each configuration source has a defined priority, later sources override earlier ones.
+**When:** Resolving model and system prompt from multiple sources.
+```
+config.toml defaults < profile settings < CLI flags
+```
+This matches standard Unix convention (config file < environment < CLI flag).
 
-**What:** Rewriting all packages simultaneously to use fenec types.
-**Why bad:** Massive diff, hard to review, hard to bisect regressions.
-**Instead:** Incremental phase-by-phase approach (see Build Order).
+### Pattern 2: Filename-as-Identity
+**What:** Profile name is derived from filename, not stored in file content.
+**When:** Any named resource stored as a file.
+```
+profiles/coder.md    → name = "coder"
+profiles/writer.md   → name = "writer"
+```
+Prevents name/filename desync. `ls profiles/` is the source of truth.
 
-## Suggested Build Order
+### Pattern 3: Package Separation for New Domain Concepts
+**What:** Profile is a new domain concept → new `internal/profile/` package.
+**When:** Adding a concept that has its own struct, parsing, validation, and file I/O.
+**Why not config package:** Config package handles TOML config + path resolution. Profile has different file format (frontmatter+markdown), different storage location, different lifecycle. Mixing them would bloat config into a god package.
 
-Dependency direction: `model` (no deps) -> `tool` (deps model) -> `chat/session` (deps model) -> `provider` (deps model) -> REPL (deps both) -> config.
+## Build Order (Dependency-Driven)
 
-### Phase 1: Foundation Types (`internal/model`)
+The six features have these dependencies:
 
-**Create** `internal/model` with all fenec-native types. No other packages change.
+```
+Config migration ──→ (all features depend on correct config path)
+       │
+       ├──→ Profile package (needs ProfilesDir())
+       │         │
+       │         ├──→ --profile flag (needs profile.Load())
+       │         │
+       │         └──→ fenec profile subcommands (needs profile.*)
+       │
+       ├──→ --system flag (needs ConfigDir() to resolve relative paths)
+       │
+       └──→ /clear command (independent, only touches REPL)
+```
 
-- `Message`, `Role`, `ToolCall`, `ToolCallFunction`
-- `ToolDef`, `FunctionDef`, `ParametersDef`, `PropertyDef`
-- `StreamMetrics`
-- Tests for JSON serialization (validates session persistence compatibility)
+### Recommended Build Order
 
-**Risk:** Low. Pure addition.
+| Phase | Feature | Why This Order |
+|-------|---------|---------------|
+| 1 | Config path migration | Foundation — all other features use config paths. Must be first so profiles dir, system prompt, etc. use the new `~/.config/fenec` path. |
+| 2 | `/clear` command | Independent, zero dependencies on other features. Quick win, builds confidence. |
+| 3 | Profile package (`internal/profile/`) | Core data model needed by both `--profile` flag and `fenec profile` subcommands. No main.go changes yet. |
+| 4 | `--system` flag | Simple flag addition to main.go. Modifies startup flow minimally. Good warmup for the profile flag integration. |
+| 5 | `--profile` flag | Uses profile package from phase 3. Modifies the startup flow in main.go (model/provider/prompt resolution). More complex integration. |
+| 6 | `fenec profile` subcommands | Requires profile package + adds subcommand routing to main.go. Most invasive to main.go structure. Benefits from having the profile loading path already tested via `--profile`. |
 
-### Phase 2: Decouple Tool System (`internal/tool`, `internal/lua`)
+**Why not build subcommands before --profile flag?** The `--profile` flag exercises `profile.Load()` in the real startup flow. If the profile format or loading has issues, you'll find them before building management commands on top.
 
-**Modify** `Tool` interface, all built-in tools, `LuaTool`, and `Registry` to use fenec types.
+## Files Changed Per Feature
 
-8 tool files + registry + luatool change. Each change is mechanical type substitution.
+### Config Migration
+- **Modified:** `internal/config/config.go` — new `ConfigDir()` logic, `MigrateIfNeeded()`, `ProfilesDir()`
+- **Modified:** `main.go` — call `MigrateIfNeeded()` early
+- **New:** `internal/config/migrate.go` (optional: could put migration logic in separate file for clarity)
 
-**Risk:** Medium (many files, small changes each). Fully testable.
+### /clear Command
+- **Modified:** `internal/repl/repl.go` — add `/clear` case + `handleClearCommand()`
+- **Modified:** `internal/repl/commands.go` — update `helpText`
 
-### Phase 3: Decouple Conversation and Session
+### Profile Package
+- **New:** `internal/profile/profile.go` — Profile struct, Load(), List(), Create()
+- **New:** `internal/profile/profile_test.go`
 
-**Modify** `Conversation` to use `[]model.Message`.
-**Modify** `Session` to use `[]model.Message`.
-**Test** existing session file deserialization.
+### --system Flag
+- **Modified:** `main.go` — new pflag, load file, pass to system prompt chain
 
-**Risk:** Medium. Session persistence compatibility must be verified.
+### --profile Flag
+- **Modified:** `main.go` — new pflag, load profile, override model/provider/prompt in startup flow
 
-### Phase 4: Provider Interface and Ollama Adapter
-
-**Create** `internal/provider` with `Provider` interface and `ModelResolver`.
-**Create** `internal/provider/ollama` wrapping existing Ollama client logic.
-**Modify** REPL to use `Provider` instead of `ChatService`.
-
-At this point: app works exactly as before, through the new abstraction.
-
-**Risk:** Medium. Ollama adapter is refactored tested code.
-
-### Phase 5: OpenAI-Compatible Adapter
-
-**Create** `internal/provider/openaicompat` using `openai-go/v3`.
-**Add** dependency: `go get github.com/openai/openai-go/v3`.
-**Test** against Ollama's `/v1/` endpoint and optionally LM Studio.
-
-**Risk:** Medium. New dependency, new streaming model, but isolated.
-
-### Phase 6: Config and CLI Integration
-
-**Add** TOML config file with provider definitions.
-**Add** `--model provider/model` parsing.
-**Add** provider factory in `main.go`.
-**Add** model discovery across providers.
-
-**Risk:** Low-Medium. Outermost layer, depends on everything else.
-
-### Phase ordering rationale
-
-- Phase 1 before 2: Tools need types to exist before referencing them.
-- Phase 2 before 3: Tool system is the most complex consumer; validates type design.
-- Phase 3 before 4: Conversation must use fenec types before provider can return them.
-- Phase 4 before 5: Ollama adapter validates Provider interface with known-working code.
-- Phase 5 before 6: OpenAI adapter must work before config-driven selection is useful.
-- Phase 6 last: Config/CLI are outermost; depend on everything else.
-
-## Component Change Summary
-
-| Component | Status | Nature of Change |
-|-----------|--------|-----------------|
-| `internal/model` | **NEW** | Fenec-native types package |
-| `internal/provider` | **NEW** | Provider interface + ModelResolver |
-| `internal/provider/ollama` | **NEW** | Ollama adapter (refactored from chat.Client) |
-| `internal/provider/openaicompat` | **NEW** | OpenAI-compatible adapter (openai-go/v3) |
-| `internal/tool` (all 8 tool files) | **MODIFIED** | `api.Tool` -> `model.ToolDef`, `api.ToolCallFunctionArguments` -> `map[string]any` |
-| `internal/tool/registry.go` | **MODIFIED** | `api.Tools` -> `[]model.ToolDef`, `api.ToolCall` -> `model.ToolCall` |
-| `internal/lua/luatool.go` | **MODIFIED** | Same type switch as tool package |
-| `internal/lua/convert.go` | **MODIFIED** | `ArgsToLuaTable` takes `map[string]any` |
-| `internal/chat/message.go` | **MODIFIED** | `Conversation.Messages` uses `[]model.Message` |
-| `internal/chat/client.go` | **REMOVED** | Logic moves to `internal/provider/ollama` |
-| `internal/chat/stream.go` | **REMOVED** | Logic moves to `internal/provider/ollama` |
-| `internal/chat/context.go` | **UNCHANGED** | Only uses ints, no provider types |
-| `internal/session/session.go` | **MODIFIED** | `Messages` field type change |
-| `internal/repl/repl.go` | **MODIFIED** | Uses `provider.Provider` instead of `chat.ChatService` |
-| `internal/config/config.go` | **MODIFIED** | Provider config types, TOML parsing |
-| `main.go` | **MODIFIED** | Provider factory, config loading, model resolver wiring |
+### fenec profile Subcommands
+- **Modified:** `main.go` — subcommand routing via pflag.Args()
+- **New:** `cmd_profile.go` (or function block in main.go — depends on complexity)
 
 ## Scalability Considerations
 
-| Concern | 2 providers (now) | 5+ providers (future) |
-|---------|-------------------|----------------------|
-| Provider interface | Simple, works fine | Still fine -- the OpenAI-compat adapter covers most backends |
-| Type conversion | Manual per adapter | 2 adapters handle unlimited backends (Ollama native + OpenAI-compat) |
-| Config | TOML with manual sections | TOML still works |
-| Testing | Mock provider per test | Shared contract test suite per provider |
-
-The "2 protocol adapters" architecture is key: the OpenAI-compatible adapter covers LM Studio, OpenAI, Anthropic (via proxy), Ollama's `/v1/`, and any other compatible endpoint. Adding a "new provider" is just adding a TOML section, not writing code.
+| Concern | Now (v1.3) | Future |
+|---------|-----------|--------|
+| Number of profiles | 1-10 files, `readdir` is instant | If 100+, add caching. Unlikely for personal tool. |
+| Profile loading | Read file + parse frontmatter per invocation | Already fast (<1ms). No optimization needed. |
+| Config migration | One-time `os.Rename()` | Runs once, then never again. Self-cleaning. |
+| Subcommand growth | 1 group (`profile`), 3 commands | If 3+ groups emerge, evaluate cobra migration. |
 
 ## Sources
 
-- [openai-go GitHub repository](https://github.com/openai/openai-go) -- v3.31.0, import path `github.com/openai/openai-go/v3` (HIGH confidence)
-- [openai-go option package](https://pkg.go.dev/github.com/openai/openai-go/option) -- `WithBaseURL`, `WithAPIKey` (HIGH confidence)
-- [openai-go tool calling example](https://github.com/openai/openai-go/blob/main/examples/chat-completion-tool-calling/main.go) -- message types and flow (HIGH confidence)
-- [openai-go streaming accumulator](https://github.com/openai/openai-go/blob/main/examples/chat-completion-accumulating/main.go) -- `ChatCompletionAccumulator` pattern (HIGH confidence)
-- [Ollama OpenAI compatibility docs](https://docs.ollama.com/api/openai-compatibility) -- supported endpoints and limitations (HIGH confidence)
-- [LM Studio tool calling docs](https://lmstudio.ai/docs/developer/openai-compat/tools) -- OpenAI-compatible tool format (HIGH confidence)
-- [any-llm-go by Mozilla](https://blog.mozilla.ai/run-openai-claude-mistral-llamafile-and-more-from-one-interface-now-in-go/) -- multi-provider abstraction patterns, evaluated and rejected (MEDIUM confidence)
-- [Provider Strategy pattern](https://dev.to/daniloab/how-to-integrate-multiple-llm-providers-without-turning-your-codebase-into-a-mess-provider-36g9) -- design patterns reference (MEDIUM confidence)
-- Existing codebase: `internal/chat/`, `internal/tool/`, `internal/repl/`, `internal/session/` -- direct code review (HIGH confidence)
+- **Go `os.UserConfigDir()` behavior:** Official Go docs (verified via `go doc os UserConfigDir`) — HIGH confidence
+- **Go `os.UserHomeDir()`:** Official Go docs — HIGH confidence
+- **pflag `Args()` for subcommand routing:** pflag source code, standard Go CLI pattern — HIGH confidence
+- **TOML frontmatter `+++` convention:** Hugo documentation convention — HIGH confidence
+- **BurntSushi/toml already in go.mod:** Verified in `go.mod` — HIGH confidence
+- **Existing codebase analysis:** Direct source code reading — HIGH confidence

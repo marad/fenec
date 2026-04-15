@@ -1,318 +1,465 @@
-# Domain Pitfalls: Multi-Provider LLM Support
+# Domain Pitfalls: Profiles, Config Migration & CLI Subcommands
 
-**Domain:** Adding multi-provider support (Ollama native + OpenAI-compatible) to existing Ollama-coupled Go application
-**Researched:** 2026-04-12
-**Confidence:** HIGH (verified against codebase audit, Ollama API types, OpenAI API spec, and real-world Go multi-provider projects)
+**Domain:** Adding profiles, config path migration, CLI subcommands, and /clear to an existing Go CLI assistant
+**Project:** Fenec v1.3
+**Researched:** 2025-07-14
+**Confidence:** HIGH (verified against direct codebase audit of all affected files, Go stdlib documentation)
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites or major issues.
+Mistakes that cause data loss, state corruption, or require rewrites.
 
-### Pitfall 1: 228 Ollama Type References -- The Shotgun Decoupling Problem
+### Pitfall 1: `/clear` Breaks `sync.Once` AutoSave — New Conversations Never Saved
 
-**What goes wrong:**
-The codebase has 228 references to `api.Message`, `api.Tool`, `api.ToolCall`, `api.ChatRequest`, `api.ChatResponse`, `api.Metrics`, and related Ollama types across 29 Go files. Every package -- chat, tool, session, repl, lua, config -- imports `github.com/ollama/ollama/api` directly. Developers attempt to add a provider interface by wrapping the Ollama client, but the Ollama types remain in every function signature, struct field, and test mock throughout the codebase. The "abstraction" becomes a thin veneer over Ollama -- the second provider (OpenAI-compatible) must either convert to/from Ollama types at every boundary, or you face a massive multi-file refactor that touches every package simultaneously.
+**What goes wrong:** The REPL's `autoSaved sync.Once` field ensures `autoSave()` runs exactly once (called from both `defer` in `Run()` and `Close()`). After `/clear` resets the conversation, `sync.Once` cannot be reset — it has already fired or will fire once. The post-clear conversation will NEVER be auto-saved.
 
-**Why it happens:**
-This is the classic "coupled by types, not just calls" problem. The coupling is not in the 1 place that calls the Ollama API -- it is in the 29 files that use Ollama's *data types* as their lingua franca. Specifically in this codebase:
-- `chat.Conversation` stores `[]api.Message` -- every message add/read operation uses Ollama types
-- `session.Session` persists `[]api.Message` to JSON -- serialized sessions are in Ollama wire format
-- `tool.Tool` interface returns `api.Tool` and accepts `api.ToolCallFunctionArguments`
-- `tool.Registry` returns `api.Tools` and dispatches via `api.ToolCall`
-- `chat.ChatService` interface exposes `api.Tools`, `*api.Message`, `*api.Metrics` in its signatures
-- `repl.REPL` directly accesses `msg.ToolCalls`, `tc.Function.Name`, `tc.Function.Arguments`, `tc.ID`
+**Why it happens:** `sync.Once` is designed to be single-use. There is no `Reset()` method. The current design assumes one session per REPL lifetime, but `/clear` introduces a second logical session within the same REPL instance.
 
-**Consequences:**
-Without addressing this first, every subsequent provider-related change becomes a "change one thing, fix 29 files" exercise. Tests break across every package. The provider abstraction leaks Ollama assumptions everywhere.
+**Consequences:** User has a productive conversation after `/clear`, exits Fenec, and their work is silently lost. No auto-save file is written for the post-clear conversation.
 
-**Prevention:**
-1. Define your own canonical message types first, before writing any provider code: `fenec.Message`, `fenec.ToolCall`, `fenec.ToolDefinition`, `fenec.StreamMetrics`. Keep them in an internal package with zero external dependencies.
-2. Make the conversion boundary explicit: Ollama provider converts `fenec.Message` to/from `api.Message` in exactly one place. OpenAI provider converts `fenec.Message` to/from OpenAI types in exactly one place.
-3. Migrate the codebase to the canonical types in a dedicated phase BEFORE adding the second provider. This is the hardest part but doing it while also adding OpenAI support doubles the cognitive load and bug surface.
-4. Accept that this is the single largest change in the milestone -- it touches 29 files and every test. Plan accordingly.
+**Prevention:** Replace `sync.Once` with a simple `bool` + `sync.Mutex` guard that `/clear` can reset:
 
-**Detection:**
-- `grep -r "github.com/ollama/ollama/api" --include="*.go" | wc -l` shows 29+ files importing Ollama types
-- Any file outside `internal/provider/ollama/` that imports `ollama/api` is a coupling point
+```go
+// In REPL struct, replace:
+//   autoSaved sync.Once
+// With:
+autoSaveDone bool
+autoSaveMu   sync.Mutex
 
-**Phase to address:** Phase 1 (canonical types). This must be the very first phase. Everything else depends on it.
+func (r *REPL) autoSave() {
+    r.autoSaveMu.Lock()
+    defer r.autoSaveMu.Unlock()
+    if r.autoSaveDone {
+        return
+    }
+    r.autoSaveDone = true
+    // ... existing save logic
+}
 
----
+func (r *REPL) resetAutoSave() {
+    r.autoSaveMu.Lock()
+    r.autoSaveDone = false
+    r.autoSaveMu.Unlock()
+}
+```
 
-### Pitfall 2: Tool Call Arguments -- String vs Object Mismatch Breaks Multi-Turn
-
-**What goes wrong:**
-OpenAI returns tool call arguments as a **JSON string** (`"arguments": "{\"command\": \"ls\"}"`) while Ollama returns them as a **parsed JSON object** (`"arguments": {"command": "ls"}`). Ollama's `api.ToolCallFunctionArguments` is a custom ordered-map type with `Get(key)` accessors. OpenAI's `openai-go` returns arguments as a raw JSON string that must be unmarshaled by the caller. When you build a unified interface, the arguments type must accommodate both formats. If you get this wrong, multi-turn tool calling breaks: passing a string-encoded arguments back to Ollama causes `"json: cannot unmarshal string into Go struct field ChatRequest.messages.tool_calls.function.arguments of type api.ToolCallFunctionArguments"`. Passing an object to an OpenAI-compatible endpoint that expects a string causes the reverse failure.
-
-**Why it happens:**
-This is a known, documented incompatibility. Ollama's native API was designed for structured tool calling where arguments are already parsed. OpenAI's API treats arguments as opaque JSON strings because their streaming format sends partial argument JSON across chunks. The two approaches are fundamentally different at the wire level, and the conversion is not symmetric -- you lose ordering information when converting Ollama's ordered map to a plain `map[string]any`, and you gain parsing overhead when converting OpenAI's string to a structured type.
-
-**Consequences:**
-- Multi-turn conversations with tool calls fail silently or with cryptic JSON errors
-- Tool results cannot be fed back correctly if the message history contains the wrong arguments format
-- Session persistence (which currently serializes `api.Message` including `ToolCalls`) becomes provider-dependent
-
-**Prevention:**
-1. Canonical `ToolCall` type should store arguments as `map[string]any` (parsed, unordered). This is the lowest common denominator both formats can convert to/from.
-2. Each provider's conversion layer must handle: Ollama ordered-map to `map[string]any` (use `ToMap()`), and OpenAI JSON string to `map[string]any` (use `json.Unmarshal`).
-3. When converting back for API calls: Ollama provider must reconstruct `ToolCallFunctionArguments` using `Set()` from the map. OpenAI provider must `json.Marshal` the map back to a string.
-4. Test the full round-trip: model returns tool call -> dispatch tool -> append result to history -> send history back -> model sees correct history. Test this for BOTH providers.
-
-**Detection:**
-- Tool calling works for the first turn but fails on subsequent turns
-- JSON unmarshal errors mentioning `ToolCallFunctionArguments`
-- Provider works in isolation but breaks when switching providers mid-session
-
-**Phase to address:** Phase 1 (canonical types) for the type definition, Phase 2 (provider implementation) for the conversion round-trip testing.
+**Detection:** Test: send messages, `/clear`, send more messages, exit — verify auto-save file contains post-clear content.
 
 ---
 
-### Pitfall 3: Session Serialization Backward Compatibility Breaks
+### Pitfall 2: `/clear` Auto-Saves Empty Session Over Valuable Previous Session
 
-**What goes wrong:**
-Existing saved sessions (in `~/.config/fenec/sessions/`) contain `[]api.Message` serialized as JSON with Ollama's wire format. This includes fields like `thinking` (Ollama-specific), `tool_calls` with Ollama's nested structure, `tool_call_id`, and `tool_name`. When you switch to canonical `fenec.Message` types, existing session files cannot be deserialized into the new types without a migration layer. Users lose their saved sessions, or worse, the application panics on startup when auto-save loads an incompatible session.
+**What goes wrong:** If `/clear` triggers auto-save before resetting, or if the user exits immediately after `/clear`, the auto-save file (`_autosave.json`) is overwritten with an empty conversation. The previous session's auto-save is lost permanently. There's no versioning or backup.
 
-**Why it happens:**
-The `session.Session` struct directly embeds `[]api.Message` and uses `encoding/json` for persistence. The JSON field names and structure are Ollama's wire format. Changing to canonical types changes the JSON schema. There is no version field in the session format to enable migration detection.
+**Why it happens:** `AutoSave()` always writes to `_autosave.json` unconditionally. The `HasContent()` check prevents saving system-prompt-only sessions, but the ordering of save-then-clear vs clear-then-save determines whether data is lost.
 
-**Consequences:**
-- Auto-save file from previous version crashes new version on startup
-- Named saved sessions become unloadable
-- Users lose conversation history (especially painful for the "personal assistant" use case where history has accumulated value)
+**Consequences:** Valuable conversation data from before `/clear` is permanently destroyed.
 
-**Prevention:**
-1. Add a `"version": 1` field to the session JSON format NOW, before changing anything else. This costs almost nothing and enables future migrations.
-2. Implement a migration function: `migrateV1ToV2(oldJSON) -> newJSON` that converts Ollama-format messages to canonical format. Run this transparently during `Store.Load()`.
-3. Design canonical message types with JSON tags that match common conventions (not Ollama-specific, not OpenAI-specific). Use `role`, `content`, `tool_calls`, `tool_call_id` -- these happen to be shared between both APIs.
-4. Keep a `Provider` field in the session metadata so loaded sessions can be associated with the correct provider for any provider-specific reconstruction needed.
+**Prevention:** `/clear` must follow this exact sequence:
+1. Persist the current session to a named file FIRST (if it has content) via `store.Save(r.session)`
+2. Create a new session with `session.NewSession(model)` — fresh ID, fresh timestamps
+3. Reset the conversation to system prompt only
+4. Reset the auto-save guard
 
-**Detection:**
-- App crashes on `/load` or auto-save restore after upgrade
-- `json.Unmarshal` errors in session loading
-- Silent data loss where tool call history in loaded sessions is empty
+```go
+func (r *REPL) handleClearCommand() {
+    // Step 1: Persist current session if it has content
+    if len(r.conv.Messages) > 1 {
+        r.session.Messages = r.conv.Messages
+        r.session.UpdatedAt = time.Now()
+        _ = r.store.Save(r.session) // Best-effort save before clear
+    }
+    
+    // Step 2: Create fresh session
+    r.session = session.NewSession(r.conv.Model)
+    
+    // Step 3: Reset conversation — preserve system prompt
+    if len(r.conv.Messages) > 0 && r.conv.Messages[0].Role == "system" {
+        r.conv.Messages = r.conv.Messages[:1]
+    } else {
+        r.conv.Messages = nil
+    }
+    
+    // Step 4: Reset tracker and auto-save guard
+    r.resetAutoSave()
+}
+```
 
-**Phase to address:** Phase 1, specifically before the type migration. Add version field first, then migrate.
-
----
-
-### Pitfall 4: Streaming Format Impedance Mismatch
-
-**What goes wrong:**
-Ollama streams NDJSON (one JSON object per line) with a callback pattern (`func(api.ChatResponse) error`). OpenAI-compatible endpoints stream SSE (`data: {json}\n\n`) with `data: [DONE]` termination. The current `StreamChat` implementation is deeply coupled to Ollama's callback pattern and `api.ChatResponse` fields (`resp.Message.Content`, `resp.Message.Thinking`, `resp.Message.ToolCalls`, `resp.Done`, `resp.Metrics`). An OpenAI-compatible client cannot use this same streaming pathway because:
-- OpenAI streams use `choices[0].delta.content` (not `message.content`)
-- OpenAI thinking uses `choices[0].delta.reasoning_content` (not `message.thinking`)
-- OpenAI tool calls stream as partial JSON across chunks with index-based assembly
-- OpenAI completion signals via `finish_reason: "stop"` (not a boolean `done` flag)
-- OpenAI token usage is in `usage.prompt_tokens` / `usage.completion_tokens` (not Ollama `Metrics`)
-
-**Why it happens:**
-Streaming is inherently provider-specific at the wire level. The stream parsing logic (SSE vs NDJSON), chunk structure, and signaling conventions are different. The temptation is to try to normalize at the stream-reading level, but the real complexity is in the chunk assembly -- especially for tool calls, which arrive as partial JSON across multiple SSE events in OpenAI format but as complete objects in Ollama format.
-
-**Consequences:**
-- Duplicated streaming logic across providers
-- Subtle bugs where tool calls are dropped during streaming because the assembly logic differs
-- Thinking/reasoning content handled incorrectly for one provider
-- Metrics/token counting broken for non-Ollama providers
-
-**Prevention:**
-1. Define a canonical streaming callback: `func(chunk StreamChunk) error` where `StreamChunk` has `Content string`, `Thinking string`, `ToolCalls []ToolCall` (fully assembled), `Done bool`, `Metrics StreamMetrics`.
-2. Each provider is responsible for parsing its wire format and emitting canonical `StreamChunk` values. The chunk assembly (especially for OpenAI's partial tool call JSON) happens inside the provider, not in shared code.
-3. The REPL/consumer code ONLY sees `StreamChunk` -- it never touches wire-level types.
-4. For OpenAI tool call streaming: accumulate partial argument strings by index, only emit a `ToolCall` in the chunk when the arguments are complete. This is the trickiest part and must be provider-internal.
-
-**Detection:**
-- Tool calls work in non-streaming mode but break in streaming mode for one provider
-- Thinking/reasoning output appears for Ollama but not OpenAI (or vice versa)
-- Token counts are zero or wrong for one provider
-
-**Phase to address:** Phase 2 (provider implementations). The canonical `StreamChunk` type should be defined in Phase 1 alongside other canonical types.
+**Detection:** Test: send several messages, `/clear`, exit immediately — verify the pre-clear conversation exists as a named session file in sessions/.
 
 ---
 
-### Pitfall 5: Context Length Discovery Has No Universal API
+### Pitfall 3: Profile System Prompt Clobbers Tool Descriptions — Model Loses Tool Access
 
-**What goes wrong:**
-Fenec currently uses Ollama's `Show` API to query `model_info.*.context_length`, which returns the model's maximum context window. This is essential for the `ContextTracker` that manages truncation. OpenAI's API has no equivalent endpoint -- there is no way to query a model's context length via the API. LM Studio's OpenAI-compatible endpoint also does not expose this. Without context length, the tracker either uses a hardcoded fallback (4096 -- dangerously low for modern models) or has to be configured manually per model. If the fallback is too low, aggressive truncation kicks in and drops messages too early. If too high, the provider returns context-exceeded errors.
+**What goes wrong:** When activating a profile, the `baseSystemPrompt` is replaced with the profile's markdown body. But tool descriptions are only present in the conversation because `refreshSystemPrompt()` appends them by combining `r.baseSystemPrompt` + `r.registry.Describe()`. If profile activation updates `baseSystemPrompt` but forgets to call `refreshSystemPrompt()`, or if it directly sets `conv.Messages[0].Content` to just the profile body, tool descriptions vanish. The model no longer knows tools exist.
 
-**Why it happens:**
-This is a genuine API gap, not an implementation oversight. OpenAI intentionally does not expose context limits via API (they've had open feature requests for years with no action). Each provider has different capabilities for model introspection. Ollama is unusually generous here; most OpenAI-compatible providers give you nothing.
+**Why it happens:** The codebase has a two-layer system: `baseSystemPrompt` (human-authored text) + tool descriptions (auto-appended by `refreshSystemPrompt()`). This layering is implicit — nothing in the type system enforces it. Profile activation is a new code path that must respect both layers but has no compile-time reminder to do so.
 
-**Consequences:**
-- Context tracker breaks for non-Ollama providers (uses 4096 fallback)
-- Users experience either premature truncation (fallback too low) or context exceeded errors (fallback too high)
-- Each model from each provider potentially has different context limits, creating a matrix of hardcoded values to maintain
+**Consequences:** The model stops using tools entirely — shell_exec, file tools, Lua tools all become invisible. The agent degrades to a plain chatbot. This is silent — no error is shown.
 
-**Prevention:**
-1. Make context length a configurable property per provider+model in the config file. Example: `providers.lmstudio.models.gemma4.context_length = 32768`.
-2. Implement a capability-based discovery: provider interface has `GetContextLength(model) (int, bool)` where the bool indicates "is this a known value or a guess?" Ollama provider queries Show API. OpenAI provider checks config overrides. If neither knows, return a sensible default (8192) with a warning.
-3. Ship a built-in lookup table for well-known models (GPT-4o = 128K, Claude = 200K, Gemma 4 = 128K) as a fallback.
-4. Log a warning when using fallback values so users know to configure context length for optimal behavior.
+**Prevention:** Profile activation MUST update `baseSystemPrompt` then call `refreshSystemPrompt()`. Never set `conv.Messages[0].Content` directly:
 
-**Detection:**
-- Context tracking works perfectly with Ollama but produces wrong truncation behavior with other providers
-- Messages being truncated much earlier than expected
-- "Context length exceeded" errors from the provider
+```go
+func (r *REPL) activateProfile(profile Profile) {
+    r.baseSystemPrompt = profile.SystemPrompt  // Update base
+    r.refreshSystemPrompt()                     // Re-appends tool descriptions
+}
+```
 
-**Phase to address:** Phase 2 (provider implementations) for the discovery interface, Phase 3 (config system) for user-configurable overrides.
+Consider adding a comment guard to `conv.Messages[0]` access: any direct write to it outside `refreshSystemPrompt()` is a bug.
+
+**Detection:** Test: activate a profile, inspect `conv.Messages[0].Content` — verify it contains `## Available Tools` section with tool listings.
+
+---
+
+### Pitfall 4: Config Path Migration Race — fsnotify Watches the Wrong Directory
+
+**What goes wrong:** Migration moves files from `~/Library/Application Support/fenec/` to `~/.config/fenec/` on macOS. But `ConfigWatcher` was started with the OLD `configPath`. After migration, config changes in the new directory are invisible to the watcher. Hot-reload silently stops working.
+
+**Why it happens:** In `main.go`, the startup sequence is: `ConfigDir()` → `configPath` → `LoadOrCreateConfig(configPath)` → `NewConfigWatcher(configPath, ...)`. If migration runs AFTER `ConfigDir()` returns but BEFORE the watcher starts, or if `ConfigDir()` returns the old path because migration hasn't happened yet, the watcher watches the wrong directory.
+
+**Consequences:** Hot-reload silently stops working after migration. User edits config in `~/.config/fenec/config.toml`, nothing happens. No error is visible.
+
+**Prevention:** Migration must happen INSIDE `ConfigDir()` before it returns — so the returned path is always the correct, post-migration path:
+
+```go
+func ConfigDir() (string, error) {
+    home, err := os.UserHomeDir()
+    if err != nil {
+        return "", err
+    }
+    
+    newDir := filepath.Join(home, ".config", AppName)
+    if dirExists(newDir) {
+        return newDir, nil
+    }
+    
+    // macOS migration: check old location
+    if runtime.GOOS == "darwin" {
+        oldDir := filepath.Join(home, "Library", "Application Support", AppName)
+        if dirExists(oldDir) {
+            if err := os.MkdirAll(filepath.Dir(newDir), 0755); err == nil {
+                if err := os.Rename(oldDir, newDir); err == nil {
+                    slog.Info("migrated config", "from", oldDir, "to", newDir)
+                    return newDir, nil
+                }
+            }
+            // Migration failed — fall back to old dir
+            return oldDir, nil
+        }
+    }
+    
+    return newDir, nil
+}
+```
+
+**Detection:** Test on macOS: start with old path populated, verify `ConfigDir()` returns new path AND watcher fires on new-path config edits.
+
+---
+
+### Pitfall 5: pflag.Parse() Consumes Subcommand Arguments — `fenec profile create` Fails
+
+**What goes wrong:** The current `main.go` calls `pflag.Parse()` which parses ALL arguments. When the user runs `fenec profile create --name coder`, pflag sees `profile` and `create` as unknown positional args and `--name` as an unknown flag, causing either an error exit or silent swallowing of the subcommand.
+
+**Why it happens:** pflag is a flag parser, not a command router. It was the right choice when fenec had only flags (`--model`, `--pipe`, `--debug`). Adding subcommands requires pre-pflag routing.
+
+**Consequences:** `fenec profile create` exits with "unknown flag" error or silently ignores the subcommand and starts the REPL.
+
+**Prevention:** Inspect `os.Args` for subcommands BEFORE `pflag.Parse()`:
+
+```go
+func main() {
+    // Route subcommands before flag parsing
+    if len(os.Args) > 1 && os.Args[1] == "profile" {
+        handleProfileSubcommand(os.Args[2:])
+        return
+    }
+    
+    // Existing pflag parsing for the REPL flow
+    modelName := pflag.StringP("model", "m", "", "...")
+    // ... rest of existing code
+    pflag.Parse()
+}
+```
+
+Do NOT introduce cobra for this. Fenec has 6 flags and one subcommand group (`profile`). Cobra adds ~5000 LOC of dependency. A 20-line manual router is the right tool.
+
+**Detection:** Test: `fenec profile list` returns profile list without REPL startup or flag errors.
+
+---
+
+### Pitfall 6: Config Migration Moves config.toml but Forgets Sessions, Tools, History
+
+**What goes wrong:** Migration copies `config.toml` from old to new path but leaves `sessions/`, `tools/`, `system.md`, and `history` file behind. After migration, fenec finds no sessions, no Lua tools, no command history.
+
+**Why it happens:** Developer thinks "config migration" means moving the config file. But `ConfigDir()` is the root for ALL app data — sessions, tools, history, system prompt are all under it. Everything must move.
+
+**Consequences:** User loses all saved sessions, custom Lua tools, and readline history. Data still exists at old path but is invisible to fenec.
+
+**Prevention:** Move the entire directory tree, not individual files:
+
+```go
+// os.Rename moves the entire directory atomically on same filesystem
+// On macOS, ~/Library/Application Support and ~/.config are on the same FS
+if err := os.Rename(oldDir, newDir); err != nil {
+    // Cross-device link: fall back to recursive copy
+    return copyDirRecursive(oldDir, newDir)
+}
+```
+
+After successful migration, optionally leave a symlink at the old location for external tools:
+```go
+os.Symlink(newDir, oldDir) // Best-effort, ignore error
+```
+
+**Detection:** Test: populate old dir with sessions/, tools/, system.md, history. Run migration. Verify ALL files and directories present in new location.
 
 ---
 
 ## Moderate Pitfalls
 
-### Pitfall 6: The Leaky "Thinking" Abstraction
+### Pitfall 7: Profile Model/Provider Override Doesn't Update Context Length or Tracker
 
-**What goes wrong:**
-Ollama exposes thinking/reasoning via `Message.Thinking` field and `ChatRequest.Think` control. OpenAI uses `delta.reasoning_content` in streaming and `reasoning_effort` parameter for control. LM Studio may or may not support reasoning depending on the model. The current code has `conv.Think` as a boolean and reads `resp.Message.Thinking` during streaming. A naive abstraction maps these 1:1, but the semantics differ: Ollama's Think is a binary on/off toggle, OpenAI's `reasoning_effort` is a graduated control (`low`/`medium`/`high`), and some providers have no thinking support at all.
+**What goes wrong:** A profile specifies `provider = "copilot"` and `model = "gpt-4o"`. Profile activation switches the provider and model, but doesn't: ping the new provider, query `GetContextLength`, update the `ContextTracker`, or update the REPL prompt string. The tracker still has the old model's token limit (e.g., 8192 for an Ollama model). With GPT-4o's 128K context, truncation thresholds are wildly wrong.
 
-**Prevention:**
-1. Canonical thinking support as `ThinkingMode` enum: `Off`, `On`, `Effort(level)`.
-2. Provider converts to its native format. Ollama: `On` -> `Think: true`, `Effort(any)` -> `Think: true`. OpenAI: `On` -> `reasoning_effort: medium`, `Effort(level)` -> corresponding level.
-3. Make thinking a provider capability that can be queried: `provider.SupportsThinking() bool`.
+**Why it happens:** The existing `/model` command in `handleModelCommand()` already handles context length updates (lines 602-619). But profile activation is a new code path that might not follow the same pattern. Code duplication risk.
 
-**Phase to address:** Phase 2 (provider implementations).
+**Prevention:** Extract the model-switching logic from `handleModelCommand()` into a shared method, call from both:
 
-### Pitfall 7: Tool Definition Schema Differences Between Providers
+```go
+func (r *REPL) switchModel(providerName, modelName string) error {
+    p, ok := r.providerRegistry.Get(providerName)
+    if !ok {
+        return fmt.Errorf("provider %q not found", providerName)
+    }
+    r.provider = p
+    r.activeProvider = providerName
+    r.conv.SetModel(modelName)
+    
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    if ctxLen, err := p.GetContextLength(ctx, modelName); err == nil && ctxLen > 0 {
+        r.conv.ContextLength = ctxLen
+        if r.tracker != nil {
+            r.tracker = chat.NewContextTracker(ctxLen, r.tracker.Threshold())
+        }
+    }
+    
+    r.rl.SetPrompt(render.FormatPrompt(modelName))
+    return nil
+}
+```
 
-**What goes wrong:**
-Ollama's `api.Tool` uses `api.ToolPropertiesMap` (an ordered map with custom JSON) and `api.PropertyType` (a custom type, not a plain string). OpenAI expects standard JSON Schema for tool parameter definitions with `"type": "string"` as a plain string. The current `tool.Tool` interface returns `api.Tool` which means every built-in tool and every Lua tool is coded to Ollama's specific schema types. Converting between these requires handling the ordered-map wrapper and custom property types.
+**Detection:** Test: activate profile with a different model, verify `tracker.Available()` returns the new model's context length.
 
-**Prevention:**
-1. Canonical tool definition should use standard JSON Schema structures -- plain `map[string]any` or a simple struct with `Type string`. Both Ollama and OpenAI can consume standard JSON Schema.
-2. Let each provider convert from canonical to its native format. Ollama provider wraps into `ToolPropertiesMap`. OpenAI provider passes through as-is.
-3. The `tool.Tool` interface should return `fenec.ToolDefinition`, not `api.Tool`.
+---
 
-**Phase to address:** Phase 1 (canonical types), since the `tool.Tool` interface is a foundational type.
+### Pitfall 8: TOML Frontmatter Parsing — No Standard Go Library, Custom Parser Bugs
 
-### Pitfall 8: Model Listing and Discovery Diverges Per Provider
+**What goes wrong:** Go has YAML frontmatter libraries but no widely-adopted TOML frontmatter parser. A custom parser fails on: files starting with UTF-8 BOM, `+++` delimiters with trailing whitespace, Windows `\r\n` line endings, empty frontmatter (`+++\n+++\n`), frontmatter-only files (no body), or `+++` appearing in the markdown body after the closing delimiter.
 
-**What goes wrong:**
-Ollama lists models via `api.Client.List()` returning `ListResponse` with model names, sizes, and digests. OpenAI-compatible endpoints use `GET /v1/models` returning a different schema with `id`, `object`, `owned_by`. LM Studio uses the OpenAI format but with local model names. The current `ChatService.ListModels()` returns `[]string` (just names), which looks provider-agnostic but the model naming conventions differ: Ollama uses `gemma4:latest`, OpenAI uses `gpt-4o-2024-08-06`, LM Studio uses local filenames. The `--model provider/model` syntax requires routing logic that understands which names belong to which provider.
+**Why it happens:** TOML frontmatter uses `+++` delimiters (Hugo convention), but there's no standalone Go package for just "parse TOML between `+++` and return the rest as body." You must write ~40 lines of careful string parsing.
 
-**Prevention:**
-1. Model listing returns `[]ModelInfo{Name, Provider, DisplayName}` not just `[]string`.
-2. Provider prefix is handled at the routing layer, not in the model name itself. Model names stay provider-native internally.
-3. When user specifies `--model ollama/gemma4`, the router knows to use the Ollama provider with model "gemma4". When user specifies `--model lmstudio/deepseek-r2`, the router uses LM Studio provider with model "deepseek-r2".
+**Prevention:** Write a focused parser with explicit edge case handling and table-driven tests:
 
-**Phase to address:** Phase 3 (unified model selection and provider routing).
+```go
+func ParseProfile(data []byte) (tomlData string, body string, err error) {
+    content := string(data)
+    content = strings.TrimPrefix(content, "\xef\xbb\xbf") // Strip BOM
+    content = strings.ReplaceAll(content, "\r\n", "\n")     // Normalize CRLF
+    
+    if !strings.HasPrefix(strings.TrimSpace(content), "+++") {
+        return "", strings.TrimSpace(content), nil // No frontmatter
+    }
+    
+    // Skip opening +++ and any trailing whitespace on that line
+    idx := strings.Index(content, "+++")
+    rest := content[idx+3:]
+    if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
+        rest = rest[nl+1:]
+    }
+    
+    // Find closing +++
+    closeIdx := strings.Index(rest, "\n+++")
+    if closeIdx == -1 {
+        return "", "", fmt.Errorf("unclosed TOML frontmatter")
+    }
+    
+    tomlPart := rest[:closeIdx]
+    bodyPart := strings.TrimSpace(rest[closeIdx+4:])
+    
+    return tomlPart, bodyPart, nil
+}
+```
 
-### Pitfall 9: Error Handling Semantics Differ Per Provider
+**Required test cases:** (1) no frontmatter, (2) empty frontmatter, (3) frontmatter only no body, (4) BOM prefix, (5) Windows CRLF, (6) TOML syntax error, (7) `+++` in markdown body after closing delimiter, (8) trailing whitespace on `+++` lines, (9) normal happy path.
 
-**What goes wrong:**
-Ollama returns errors as Go errors from the client library with provider-specific messages ("model not found", "context length exceeded"). OpenAI-compatible APIs return HTTP status codes with JSON error bodies (`{"error": {"message": "...", "type": "...", "code": "..."}}`). Rate limiting, authentication failures, model unavailability, and context overflow each have different error formats. Without normalization, error handling in the REPL becomes a mess of provider-specific `if` branches.
+**Detection:** Table-driven test suite covering all 9 cases above.
 
-**Prevention:**
-1. Define canonical error types: `ErrModelNotFound`, `ErrContextExceeded`, `ErrRateLimit`, `ErrAuth`, `ErrProviderUnavailable`.
-2. Each provider maps its native errors to canonical errors in its conversion layer.
-3. REPL handles only canonical errors with appropriate user-facing messages.
+---
 
-**Phase to address:** Phase 2 (provider implementations).
+### Pitfall 9: `--system` and `--profile` Flag Precedence Ambiguity
 
-### Pitfall 10: The "OpenAI-Compatible" Assumption Trap
+**What goes wrong:** User runs `fenec --profile coder --system custom.md`. Both provide a system prompt. Without clear precedence, the behavior depends on flag parse order, creating confusion.
 
-**What goes wrong:**
-"OpenAI-compatible" does not mean "identical to OpenAI." LM Studio, Ollama's `/v1` endpoint, vLLM, and LocalAI each have their own deviations: LM Studio may fail to parse tool calls from smaller models (returns them in `content` instead of `tool_calls`), Ollama's `/v1` endpoint does not support `tool_choice`, some providers do not support `stream_options.include_usage` for token counting. Building one "OpenAI-compatible" client and assuming it works everywhere leads to subtle failures that only appear with specific providers.
+**Why it happens:** Two new flags affecting the same thing (system prompt) with no documented interaction.
 
-**Prevention:**
-1. Test with every provider you claim to support. "OpenAI-compatible" means "needs testing against this specific provider."
-2. Build provider capability detection: can this provider do tool calling? Streaming? Thinking? Token usage reporting? Make these queryable booleans, not assumptions.
-3. Degrade gracefully: if a provider does not report usage, skip context tracking for that provider. If tool calls come back in `content` instead of `tool_calls`, attempt to parse them from content as a fallback.
+**Prevention:** Define and document a strict precedence chain:
 
-**Phase to address:** Phase 2 (provider implementations) for initial support, ongoing through Phase 3.
+```
+1. --system <file>     (highest — explicit per-invocation override)
+2. --profile <name>    (profile's markdown body)
+3. ~/.config/fenec/system.md  (user's global default)
+4. defaultSystemPrompt const  (built-in fallback)
+```
+
+`--system` with `--profile` uses the file's system prompt but keeps the profile's model/provider. Error on `--system <file>` when the file doesn't exist — don't silently fall through.
+
+**Detection:** Test all 4 combinations: neither flag, --system only, --profile only, both flags together.
+
+---
+
+### Pitfall 10: ContextTracker Not Reset on `/clear` — Ghost Token Counts Trigger Truncation
+
+**What goes wrong:** After `/clear`, `conv.Messages` has only the system prompt, but `ContextTracker.lastPromptEval` and `lastEval` still hold token counts from the pre-clear conversation. `ShouldTruncate()` returns `true` immediately. The first post-clear message pair gets truncated from a brand-new conversation.
+
+**Why it happens:** `ContextTracker` has no `Reset()` method. Its counts are corrected by the next `StreamChat` response, but `ShouldTruncate` is checked AFTER the response — the first post-clear response may trigger truncation of the system prompt's companion user message.
+
+**Prevention:** Add `Reset()` to ContextTracker and call it from `/clear`:
+
+```go
+func (ct *ContextTracker) Reset() {
+    ct.lastPromptEval = 0
+    ct.lastEval = 0
+}
+```
+
+**Detection:** Test: fill context to 80%, `/clear`, send one message — verify no truncation warning appears.
+
+---
+
+### Pitfall 11: Hot-Reload Removes Provider Referenced by Active Profile
+
+**What goes wrong:** User activates profile using `provider = "openai"`. They edit `config.toml` and rename the provider to `gpt`. Hot-reload fires, `providerRegistry.Update()` replaces all providers. The REPL's `r.provider` still holds the OLD provider object (Go GC keeps it alive, so it works), but `r.activeProvider` is `"openai"` which no longer exists in the registry. `/model` listing becomes confusing — active provider isn't in the list.
+
+**Why it happens:** `providerRegistry.Update()` replaces the map atomically, but the REPL holds a direct `provider.Provider` pointer, not a name-based lookup. This is an existing edge case amplified by profiles, since profiles encode provider names in files.
+
+**Prevention:** Accept stale references — the active provider instance continues working. Log a warning if `r.activeProvider` disappears from the registry after reload. Don't auto-switch mid-conversation.
+
+**Detection:** Manual test: activate profile, rename provider in config, verify chat still works and no panic occurs.
+
+---
+
+### Pitfall 12: Session JSON Doesn't Record Profile — `/load` + `refreshSystemPrompt()` Clobbers Profile Prompt
+
+**What goes wrong:** User activates profile "coder" with a custom system prompt. They save the session. Later, they `/load` it — messages (including the system prompt in `Messages[0]`) are restored, but `r.baseSystemPrompt` is still the default. Next call to `refreshSystemPrompt()` (e.g., after a Lua tool create event) replaces the loaded session's system prompt with the default + tool descriptions, destroying the profile's prompt.
+
+**Why it happens:** `Session` struct has `ID`, `Model`, `Messages`, `TokenCount` — no `Profile` or `BaseSystemPrompt` field. On load, `baseSystemPrompt` isn't restored.
+
+**Prevention:** Add `Profile string` field to `Session` and extract `baseSystemPrompt` on load:
+
+```go
+type Session struct {
+    // ... existing fields
+    Profile string `json:"profile,omitempty"` // Active profile name, empty if none
+}
+```
+
+On `/load`: if session has a profile, reload that profile's system prompt into `baseSystemPrompt`. If no profile, extract base prompt from `Messages[0]` by stripping the `## Available Tools` section.
+
+**Detection:** Test: activate profile, save, load, trigger `refreshSystemPrompt()` — verify system prompt still has profile content.
 
 ---
 
 ## Minor Pitfalls
 
-### Pitfall 11: Ollama-Specific Features Lost in Abstraction
+### Pitfall 13: Profile Filenames with Special Characters
 
-**What goes wrong:**
-Ollama has features no other provider offers: `keep_alive` to prevent model unloading, `num_ctx` per-request, `Truncate` control, model pulling/management, `/api/ps` for running model inspection. A too-aggressive abstraction strips these out in the name of portability. Users who were happy with Ollama-specific behavior find the abstracted version worse.
+**What goes wrong:** `fenec profile create --name "my cool profile!"` creates `profiles/my cool profile!.md`. Spaces and special characters cause shell escaping issues.
 
-**Prevention:**
-Implement provider-specific options as an escape hatch. The canonical `ChatOptions` has common fields, plus a `ProviderOptions map[string]any` for pass-through. Ollama provider checks for `keep_alive`, `num_ctx` in this map. Other providers ignore them.
+**Prevention:** Restrict profile names to `[a-z0-9_-]`:
 
-### Pitfall 12: The "Big Bang" Migration Temptation
+```go
+var validProfileName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+```
 
-**What goes wrong:**
-Developers try to do the type migration (228 references), provider interface, OpenAI client, config system, and `--model` routing all in one massive PR. The PR becomes unreviewable, debugging is impossible because everything changed at once, and you end up in a state where neither the old Ollama path nor the new abstracted path works correctly.
+Validate on create, reject with clear error message.
 
-**Prevention:**
-1. Phase 1: Introduce canonical types and migrate internal code. At the end of Phase 1, only the Ollama provider exists but it goes through the abstraction.
-2. Phase 2: Add OpenAI-compatible provider. At the end of Phase 2, both providers work but config is hardcoded/flag-driven.
-3. Phase 3: Add config file, `--model` syntax, model discovery. 
-Each phase is independently shippable and testable. 
+---
 
-### Pitfall 13: Test Mock Fragility
+### Pitfall 14: Config Migration on Non-macOS Runs Unnecessarily
 
-**What goes wrong:**
-The current test suite mocks `chatAPI` (an interface matching `api.Client` methods) with Ollama-specific types in the mock responses. When canonical types replace Ollama types in interfaces, every mock in every test file needs updating. If you do this as part of the provider addition rather than as a separate step, you are debugging type conversion logic and test mock updates simultaneously.
+**What goes wrong:** On Linux, `os.UserConfigDir()` already returns `~/.config`. Migration logic checking for `~/Library/Application Support/fenec` wastes time and might hit edge cases on unexpected paths.
 
-**Prevention:**
-The type migration (Phase 1) should include updating all test mocks to use canonical types. This is a mechanical change that should be committed and verified (all tests pass) before any provider logic is added.
+**Prevention:** Guard migration with `runtime.GOOS == "darwin"`. On Linux, `ConfigDir()` returns the standard XDG path with zero migration logic.
+
+---
+
+### Pitfall 15: `/clear` Confirmation and Help Text Missing
+
+**What goes wrong:** `/clear` executes silently. User isn't sure it worked. `helpText` constant in `commands.go` doesn't include `/clear`.
+
+**Prevention:** Print `"Conversation cleared. Previous session saved as {session-id}."` Update `helpText` to include `/clear - Reset conversation (saves current session first)`.
+
+---
+
+### Pitfall 16: Subcommand `fenec profile list` Triggers Pipe Mode Detection
+
+**What goes wrong:** Running `profiles=$(fenec profile list)` triggers the pipe mode check (`!term.IsTerminal(os.Stdin)`). The code auto-enables pipe mode and tries to read stdin as a chat message instead of running the profile subcommand.
+
+**Prevention:** Route subcommands BEFORE pipe detection and BEFORE flag parsing:
+
+```go
+func main() {
+    // Subcommand routing — must happen before pipe detection
+    if len(os.Args) > 1 && os.Args[1] == "profile" {
+        handleProfileSubcommand(os.Args[2:])
+        return  // Exit before pipe/interactive/flag logic
+    }
+    
+    // ... existing: pflag.Parse(), pipe detection, config load, REPL
+}
+```
+
+**Detection:** Test: `fenec profile list 2>/dev/null | head -1` returns a profile, not REPL output.
+
+---
+
+### Pitfall 17: Profile Frontmatter Validates Provider Name at Create Time but Provider May Not Exist Yet
+
+**What goes wrong:** User creates a profile with `provider = "azure"` before adding an Azure provider to config.toml. Validation at create time rejects it. But the profile is supposed to be a static file — it should be valid to reference future providers.
+
+**Prevention:** Validate provider/model at activation time (when `--profile` is used), not at create time. Create should validate syntax only (well-formed TOML, required fields present), not semantics.
 
 ---
 
 ## Phase-Specific Warnings
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Canonical types (Phase 1) | Trying to make canonical types match Ollama or OpenAI exactly | Design canonical types for YOUR domain, not either API. Both APIs convert to/from your types. |
-| Canonical types (Phase 1) | Missing a field that one provider needs | Audit both Ollama Message and OpenAI ChatCompletionMessage fields completely before designing canonical type. Include `Images`, `Thinking`, `ToolCalls`, `ToolCallID`, `ToolName`. |
-| Session migration (Phase 1) | Breaking existing sessions without migration path | Add version field to session format before changing message types. Write V1->V2 migrator. |
-| Ollama provider (Phase 1) | Regression in existing Ollama behavior | Run full existing test suite after migration. Nothing should change in behavior, only in internal types. |
-| OpenAI provider (Phase 2) | Tool call argument round-trip failure | Write integration tests that do: send tools -> model calls tool -> dispatch -> append result -> send back -> model responds. |
-| OpenAI provider (Phase 2) | Streaming tool call assembly bugs | OpenAI streams partial tool call JSON across chunks by index. Build accumulator that waits for complete arguments. |
-| Config system (Phase 3) | Config schema that does not accommodate future providers | Design config as `[providers.NAME]` sections with `type`, `url`, `api_key`, `models` fields. Provider type determines which client to instantiate. |
-| Model routing (Phase 3) | Ambiguous model names across providers | Require `provider/model` syntax for disambiguation. Default provider configurable. Bare model names resolve to default provider only. |
-
-## What Specifically Breaks in This Codebase
-
-A concrete audit of which files need changes and what breaks:
-
-| File | Current Ollama Coupling | What Must Change |
-|------|------------------------|------------------|
-| `chat/message.go` | `Conversation.Messages` is `[]api.Message`, all add methods create `api.Message` | Swap to `[]fenec.Message`, update all 6 methods |
-| `chat/client.go` | `ChatService` interface exposes `api.Tools`, `*api.Message`, `*api.Metrics` | Replace with canonical types in interface signature |
-| `chat/stream.go` | `StreamChat` constructs `api.ChatRequest`, reads `api.ChatResponse` fields, returns `*api.Message` | Move request construction into Ollama provider, stream through canonical `StreamChunk` |
-| `chat/context.go` | `TruncateOldest` accesses `conv.Messages[i].Role` (works with any type that has Role) | Should need minimal change if canonical Message also has Role field |
-| `tool/registry.go` | `Tool` interface returns `api.Tool`, accepts `api.ToolCallFunctionArguments`, `api.ToolCall` | Core interface change -- cascades to all 8 built-in tools and LuaTool |
-| `tool/shell.go` | `Definition()` returns `api.Tool`, `Execute()` accepts `api.ToolCallFunctionArguments` | Update to canonical types (repeated for read.go, write.go, edit.go, listdir.go, create.go, update.go, delete.go) |
-| `lua/luatool.go` | `Definition()` returns `api.Tool`, `Execute()` accepts `api.ToolCallFunctionArguments`, `ArgsToLuaTable` converts from Ollama args | Update to canonical types, update Lua bridge conversion |
-| `session/session.go` | `Session.Messages` is `[]api.Message` | Swap to canonical type, add version field, write migration |
-| `session/store.go` | Serializes `[]api.Message` via `json.Encoder` | No code change needed if canonical Message has compatible JSON tags; add migration on Load |
-| `repl/repl.go` | Directly accesses `msg.ToolCalls`, `tc.Function.Name`, `tc.Function.Arguments`, `tc.ID`, `api.Tools` | Update field access to canonical type fields |
-| `main.go` | `chat.NewClient(host)` directly creates Ollama client | Replace with provider factory: `provider.New(config)` |
-
-## Recovery Strategies
-
-| Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| Attempted big-bang migration, code in broken state | HIGH | Git reset to last working commit. Restart with Phase 1 (types only). |
-| Session files incompatible with new types | LOW | Write migration script, or add fallback JSON unmarshaling that tries both old and new format. |
-| Tool call arguments round-trip broken for one provider | MEDIUM | Add provider-specific integration tests. Debug by printing raw JSON at conversion boundary. |
-| Streaming broken for OpenAI provider | MEDIUM | Implement non-streaming fallback. Debug SSE parsing separately from chunk assembly. |
-| Context tracking wrong for non-Ollama provider | LOW | Use conservative fallback (8192), add config override, log warning. |
-| Provider "abstraction" that is just Ollama types with an interface wrapper | HIGH | This is the biggest risk. If discovered late, requires restarting the type migration. Catch early by ensuring the interface has NO Ollama imports. |
+| Phase Topic | Likely Pitfall | Mitigation | Severity |
+|-------------|---------------|------------|----------|
+| `/clear` command | sync.Once prevents re-save (#1), empty overwrite (#2), ghost token counts (#10) | Replace sync.Once with resettable guard, save-before-clear sequence, add tracker.Reset() | Critical |
+| Profile system prompt | Tool descriptions clobbered (#3), precedence ambiguity (#9) | Always go through refreshSystemPrompt(), define --system > --profile > system.md chain | Critical |
+| Config path migration | fsnotify watches old dir (#4), incomplete migration (#6), non-macOS guard (#14) | Migrate inside ConfigDir() before return, move entire tree with os.Rename, guard with GOOS | Critical |
+| CLI subcommands | pflag consumes args (#5), pipe mode interference (#16) | Route subcommands in os.Args before pflag.Parse() and before pipe detection | Critical |
+| TOML frontmatter | No standard library, edge cases (#8) | Custom parser with 9-case table-driven test suite | Moderate |
+| Profile + model switch | Context length stale (#7), session lacks profile (#12), stale provider (#11) | Extract shared switchModel(), add Profile to Session, accept stale refs with warning | Moderate |
+| Profile naming | Special characters (#13), future providers (#17) | Regex validation on name, validate provider at activation not creation | Minor |
+| UX feedback | Silent /clear, missing help (#15) | Print confirmation with saved session ID, update helpText | Minor |
 
 ## Sources
 
-- [Ollama API types (pkg.go.dev)](https://pkg.go.dev/github.com/ollama/ollama/api) -- Message, ToolCall, ToolCallFunctionArguments struct definitions (HIGH confidence)
-- [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility) -- supported/unsupported features matrix (HIGH confidence)
-- [OpenAI function calling guide](https://developers.openai.com/api/docs/guides/function-calling) -- tool_calls format specification (HIGH confidence)
-- [ToolCallFunctionArguments string vs object bug](https://github.com/aliasrobotics/cai/issues/76) -- JSON unmarshal mismatch between OpenAI string and Ollama object format (HIGH confidence)
-- [Ollama tool_calls arguments format issue](https://github.com/openclaw/openclaw/issues/46679) -- arguments as string breaks multi-turn (HIGH confidence)
-- [Mozilla any-llm-go](https://blog.mozilla.ai/run-openai-claude-mistral-llamafile-and-more-from-one-interface-now-in-go/) -- Go multi-provider abstraction patterns, OpenAI-compatible base provider (MEDIUM confidence)
-- [Multi-provider LLM orchestration guide](https://dev.to/ash_dubai/multi-provider-llm-orchestration-in-production-a-2026-guide-1g10) -- common mistakes in multi-provider setups (MEDIUM confidence)
-- [Same Beat, Different Synths (Mule AI)](https://muleai.io/blog/any-llm-go-mozilla-provider-abstraction/) -- provider abstraction design principles (MEDIUM confidence)
-- [OpenAI model context length limitation](https://community.openai.com/t/request-query-for-a-models-max-tokens/161891) -- no API endpoint for context length (HIGH confidence)
-- [LM Studio tool calling docs](https://lmstudio.ai/docs/developer/openai-compat/tools) -- tool calling support and limitations (HIGH confidence)
-- [OpenAI streaming API](https://developers.openai.com/api/docs/guides/streaming-responses) -- SSE format, delta vs message, finish_reason (HIGH confidence)
-- [Ollama streaming tool calling](https://ollama.com/blog/tool-support) -- NDJSON format, tool calls in pre-Done chunk (HIGH confidence)
-- [Ollama OpenAI compatibility layer internals](https://deepwiki.com/ollama/ollama/3.4-openai-compatibility-layer) -- transformation logic between formats (MEDIUM confidence)
-- [openai-go tool calling example](https://github.com/openai/openai-go/blob/main/examples/chat-completion-tool-calling/main.go) -- official Go SDK tool calling pattern (HIGH confidence)
-- [OpenAI reasoning models](https://developers.openai.com/api/docs/guides/reasoning) -- reasoning_content and reasoning_effort (HIGH confidence)
-- [Ollama context length docs](https://docs.ollama.com/context-length) -- Show API for context length discovery (HIGH confidence)
+- Direct codebase audit: `internal/repl/repl.go` lines 40 (sync.Once), 779-789 (refreshSystemPrompt), 630-646 (autoSave) — HIGH confidence
+- Direct codebase audit: `internal/config/config.go` lines 46-52 (ConfigDir using os.UserConfigDir) — HIGH confidence
+- Direct codebase audit: `internal/config/watcher.go` lines 47-49 (watches parent directory of configPath) — HIGH confidence
+- Direct codebase audit: `internal/session/store.go` lines 109-115 (AutoSave to _autosave.json) — HIGH confidence
+- Direct codebase audit: `internal/chat/context.go` lines 1-92 (ContextTracker with no Reset method) — HIGH confidence
+- Direct codebase audit: `main.go` lines 26-48 (pflag flag definitions, no subcommand routing) — HIGH confidence
+- Go sync.Once documentation: no Reset method by design — HIGH confidence
+- Hugo TOML frontmatter convention: `+++` delimiters — HIGH confidence
+- pflag documentation: flag-only parser, no subcommand concept — HIGH confidence
+- `os.UserConfigDir()` Go stdlib: returns `~/Library/Application Support` on macOS, `$XDG_CONFIG_HOME` or `~/.config` on Linux — HIGH confidence
+- `os.Rename` Go stdlib: atomic on same filesystem, returns EXDEV error for cross-device — HIGH confidence
 
 ---
-*Pitfalls research for: Fenec v1.1 -- Multi-provider LLM support*
-*Researched: 2026-04-12*
+*Pitfalls research for: Fenec v1.3 — Profiles, Config Migration & CLI Subcommands*
+*Researched: 2025-07-14*
