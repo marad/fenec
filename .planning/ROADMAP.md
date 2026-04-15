@@ -68,7 +68,9 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
   2. Existing macOS user's data auto-migrates from `~/Library/Application Support/fenec` to `~/.config/fenec` on first run
   3. User sees migration feedback message on stderr confirming successful migration
   4. All existing features (sessions, tools, config, system.md) work identically after migration
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 14-01-PLAN.md — ConfigDir standardization, migration logic, and main.go wiring (TDD)
 
 ### Phase 15: Clear Command
 **Goal**: User can reset conversation mid-session without losing previous context or breaking REPL state
@@ -141,7 +143,7 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
 | 11. Model Routing | v1.1 | 2/2 | Complete | 2026-04-14 |
 | 12. Copilot Provider | v1.2 | 2/2 | Complete   | 2026-04-14 |
 | 13. Model Catalog | v1.2 | 2/2 | Complete   | 2026-04-14 |
-| 14. Config Path Migration | v1.3 | 0/? | Not started | - |
+| 14. Config Path Migration | v1.3 | 0/1 | Planned | - |
 | 15. Clear Command | v1.3 | 0/? | Not started | - |
 | 16. Profile Package | v1.3 | 0/? | Not started | - |
 | 17. System Flag | v1.3 | 0/? | Not started | - |
