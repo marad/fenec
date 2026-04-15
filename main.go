@@ -15,6 +15,7 @@ import (
 	"github.com/marad/fenec/internal/chat"
 	"github.com/marad/fenec/internal/config"
 	feneclua "github.com/marad/fenec/internal/lua"
+	"github.com/marad/fenec/internal/profile"
 	"github.com/marad/fenec/internal/provider"
 	"github.com/marad/fenec/internal/render"
 	"github.com/marad/fenec/internal/repl"
@@ -31,6 +32,7 @@ func main() {
 	lineByLine := pflag.Bool("line-by-line", false, "In pipe mode, send each stdin line separately (default: batch)")
 	showVersion := pflag.BoolP("version", "v", false, "Print version and exit")
 	systemFile := pflag.StringP("system", "s", "", "File to use as system prompt for this session")
+	profileName := pflag.StringP("profile", "P", "", "Activate a named profile (loads model + prompt)")
 
 	pflag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `fenec - AI assistant powered by local Ollama models
@@ -38,6 +40,7 @@ func main() {
 Usage:
   fenec                    Start interactive chat
   fenec --model gemma4     Use a specific model
+  fenec --profile coder    Activate a named profile
   echo "prompt" | fenec    Send piped input to model
   fenec --yolo             Auto-approve all tool commands
   fenec --system prompt.md  Use a custom system prompt
@@ -92,6 +95,24 @@ Flags:
 		providerRegistry.Register(name, p)
 	}
 	providerRegistry.SetDefault(cfg.DefaultProvider)
+
+	// Load profile if --profile flag was specified (FLAG-02).
+	var prof *profile.Profile
+	if *profileName != "" {
+		profileDir, err := config.ProfilesDir()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, render.FormatError(
+				fmt.Sprintf("Failed to resolve profiles directory: %v", err)))
+			os.Exit(1)
+		}
+		prof, err = profile.Load(profileDir, *profileName)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, render.FormatError(
+				fmt.Sprintf("Profile %q: %v", *profileName, err)))
+			os.Exit(1)
+		}
+	}
+	_ = prof // Used in model/prompt precedence chains below.
 
 	// Start config file watcher for hot-reload (CONF-04).
 	configWatcher, err := config.NewConfigWatcher(configPath, func() {
