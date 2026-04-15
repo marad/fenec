@@ -30,6 +30,7 @@ func main() {
 	yoloMode := pflag.BoolP("yolo", "y", false, "Auto-approve all dangerous commands (use with caution)")
 	lineByLine := pflag.Bool("line-by-line", false, "In pipe mode, send each stdin line separately (default: batch)")
 	showVersion := pflag.BoolP("version", "v", false, "Print version and exit")
+	systemFile := pflag.StringP("system", "s", "", "File to use as system prompt for this session")
 
 	pflag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `fenec - AI assistant powered by local Ollama models
@@ -39,6 +40,7 @@ Usage:
   fenec --model gemma4     Use a specific model
   echo "prompt" | fenec    Send piped input to model
   fenec --yolo             Auto-approve all tool commands
+  fenec --system prompt.md  Use a custom system prompt
 
 Flags:
 `)
@@ -171,12 +173,24 @@ Flags:
 		defaultModel = models[0]
 	}
 
-	// Load system prompt (per D-15).
-	systemPrompt, err := config.LoadSystemPrompt()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, render.FormatError(
-			fmt.Sprintf("Failed to load system prompt: %v", err)))
-		os.Exit(1)
+	// Load system prompt — --system flag overrides config file (per D-03).
+	var systemPrompt string
+	if *systemFile != "" {
+		data, err := os.ReadFile(*systemFile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, render.FormatError(
+				fmt.Sprintf("Failed to read system prompt file: %v", err)))
+			os.Exit(1)
+		}
+		systemPrompt = string(data)
+	} else {
+		var err error
+		systemPrompt, err = config.LoadSystemPrompt()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, render.FormatError(
+				fmt.Sprintf("Failed to load system prompt: %v", err)))
+			os.Exit(1)
+		}
 	}
 
 	// Query model's context window size.
