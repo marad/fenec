@@ -106,7 +106,9 @@ Plans:
   1. `fenec --system <file>` reads file content and uses it as the system prompt for that session
   2. Tool descriptions remain functional when using `--system` override (tools still callable)
   3. Without `--system`, default system prompt behavior is unchanged
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 17-01-PLAN.md — --system/-s flag with conditional system prompt loading
 
 ### Phase 18: Profile Flag
 **Goal**: User can activate a named profile at launch, loading both model and system prompt with proper flag precedence
