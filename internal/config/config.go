@@ -161,6 +161,17 @@ func ToolsDir() (string, error) {
 	return filepath.Join(dir, "tools"), nil
 }
 
+// ProfilesDir returns the path to the profiles directory.
+// Located at {ConfigDir}/profiles/.
+// Does NOT create the directory -- it may not exist until the user creates a profile.
+func ProfilesDir() (string, error) {
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "profiles"), nil
+}
+
 // HistoryFile returns the path to the readline history file.
 // Located at {ConfigDir}/history.
 // Creates the config directory if it doesn't exist.
