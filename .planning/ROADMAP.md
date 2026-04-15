@@ -52,7 +52,7 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
 
 - [x] **Phase 14: Config Path Migration** - Standardize config to `~/.config/fenec` with automatic macOS migration (completed 2026-04-15)
 - [x] **Phase 15: Clear Command** - `/clear` REPL command resets conversation mid-session without data loss (completed 2026-04-15)
-- [ ] **Phase 16: Profile Package** - Profile data model with TOML frontmatter parsing, file I/O, and validation
+- [ ] **Phase 16: Profile Package** - Profile data model with TOML frontmatter parsing, file I/O, and validation (1 plan)
 - [ ] **Phase 17: System Flag** - `--system <file>` flag for ad-hoc system prompt override
 - [ ] **Phase 18: Profile Flag** - `--profile <name>` flag with model/prompt priority chain
 - [ ] **Phase 19: Profile Subcommands** - `fenec profile list/create/edit` CLI subcommands
@@ -94,7 +94,9 @@ Plans:
   2. Profile TOML frontmatter `model` field correctly parses `provider/model` syntax
   3. Profile markdown body (after frontmatter) is extracted as the system prompt text
   4. Profile loading handles edge cases gracefully: missing frontmatter, empty body, malformed TOML
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 16-01-PLAN.md — Profile types, TOML frontmatter parsing, file I/O (Load/List), and ProfilesDir helper
 
 ### Phase 17: System Flag
 **Goal**: User can override the system prompt for a single invocation via a file path flag
@@ -147,7 +149,7 @@ Plans:
 | 13. Model Catalog | v1.2 | 2/2 | Complete   | 2026-04-14 |
 | 14. Config Path Migration | v1.3 | 1/1 | Complete    | 2026-04-15 |
 | 15. Clear Command | v1.3 | 0/1 | Not started | - |
-| 16. Profile Package | v1.3 | 0/? | Not started | - |
+| 16. Profile Package | v1.3 | 0/1 | Not started | - |
 | 17. System Flag | v1.3 | 0/? | Not started | - |
 | 18. Profile Flag | v1.3 | 0/? | Not started | - |
 | 19. Profile Subcommands | v1.3 | 0/? | Not started | - |
