@@ -53,7 +53,7 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
 - [x] **Phase 14: Config Path Migration** - Standardize config to `~/.config/fenec` with automatic macOS migration (completed 2026-04-15)
 - [x] **Phase 15: Clear Command** - `/clear` REPL command resets conversation mid-session without data loss (completed 2026-04-15)
 - [x] **Phase 16: Profile Package** - Profile data model with TOML frontmatter parsing, file I/O, and validation (1 plan) (completed 2026-04-15)
-- [ ] **Phase 17: System Flag** - `--system <file>` flag for ad-hoc system prompt override
+- [x] **Phase 17: System Flag** - `--system <file>` flag for ad-hoc system prompt override (completed 2026-04-15)
 - [ ] **Phase 18: Profile Flag** - `--profile <name>` flag with model/prompt priority chain
 - [ ] **Phase 19: Profile Subcommands** - `fenec profile list/create/edit` CLI subcommands
 
@@ -106,9 +106,9 @@ Plans:
   1. `fenec --system <file>` reads file content and uses it as the system prompt for that session
   2. Tool descriptions remain functional when using `--system` override (tools still callable)
   3. Without `--system`, default system prompt behavior is unchanged
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 17-01-PLAN.md — --system/-s flag with conditional system prompt loading
+- [x] 17-01-PLAN.md — --system/-s flag with conditional system prompt loading
 
 ### Phase 18: Profile Flag
 **Goal**: User can activate a named profile at launch, loading both model and system prompt with proper flag precedence
@@ -152,6 +152,6 @@ Plans:
 | 14. Config Path Migration | v1.3 | 1/1 | Complete    | 2026-04-15 |
 | 15. Clear Command | v1.3 | 0/1 | Not started | - |
 | 16. Profile Package | v1.3 | 1/1 | Complete   | 2026-04-15 |
-| 17. System Flag | v1.3 | 0/? | Not started | - |
+| 17. System Flag | v1.3 | 1/1 | Complete   | 2026-04-15 |
 | 18. Profile Flag | v1.3 | 0/? | Not started | - |
 | 19. Profile Subcommands | v1.3 | 0/? | Not started | - |

@@ -30,7 +30,7 @@ Requirements for Profiles & Config milestone. Each maps to roadmap phases.
 
 ### CLI Flags
 
-- [ ] **FLAG-01**: `--system <file>` flag reads file and uses content as system prompt for one invocation
+- [x] **FLAG-01**: `--system <file>` flag reads file and uses content as system prompt for one invocation
 - [ ] **FLAG-02**: `--profile <name>` / `-P <name>` flag activates a named profile at launch (loads model + prompt)
 - [ ] **FLAG-03**: `--model` flag overrides profile's model setting (priority: `--model` > profile > config default)
 - [ ] **FLAG-04**: `--system` and `--profile` are composable (`--system` overrides prompt, profile's model still applies)
@@ -77,7 +77,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROF-01 | Phase 16 | Complete |
 | PROF-02 | Phase 16 | Complete |
 | PROF-03 | Phase 16 | Complete |
-| FLAG-01 | Phase 17 | Pending |
+| FLAG-01 | Phase 17 | Complete |
 | FLAG-02 | Phase 18 | Pending |
 | FLAG-03 | Phase 18 | Pending |
 | FLAG-04 | Phase 18 | Pending |
