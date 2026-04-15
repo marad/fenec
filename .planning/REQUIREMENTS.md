@@ -24,9 +24,9 @@ Requirements for Profiles & Config milestone. Each maps to roadmap phases.
 - [x] **PROF-01**: User can create profile files as markdown with `+++`-delimited TOML frontmatter in `~/.config/fenec/profiles/`
 - [x] **PROF-02**: Profile TOML frontmatter supports `model` field for model/provider override (using existing `provider/model` syntax)
 - [x] **PROF-03**: Profile markdown body (after frontmatter) becomes the system prompt for the session
-- [ ] **PROF-04**: User can list available profiles with name and model via `fenec profile list`
-- [ ] **PROF-05**: User can scaffold a new profile via `fenec profile create <name>` (opens `$EDITOR` with template)
-- [ ] **PROF-06**: User can edit an existing profile via `fenec profile edit <name>` (opens `$EDITOR`)
+- [x] **PROF-04**: User can list available profiles with name and model via `fenec profile list`
+- [x] **PROF-05**: User can scaffold a new profile via `fenec profile create <name>` (opens `$EDITOR` with template)
+- [x] **PROF-06**: User can edit an existing profile via `fenec profile edit <name>` (opens `$EDITOR`)
 
 ### CLI Flags
 
@@ -81,9 +81,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FLAG-02 | Phase 18 | Complete |
 | FLAG-03 | Phase 18 | Complete |
 | FLAG-04 | Phase 18 | Complete |
-| PROF-04 | Phase 19 | Pending |
-| PROF-05 | Phase 19 | Pending |
-| PROF-06 | Phase 19 | Pending |
+| PROF-04 | Phase 19 | Complete |
+| PROF-05 | Phase 19 | Complete |
+| PROF-06 | Phase 19 | Complete |
 
 **Coverage:**
 - v1.3 requirements: 16 total
