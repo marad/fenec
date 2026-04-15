@@ -23,6 +23,12 @@ func (ct *ContextTracker) Update(promptEvalCount, evalCount int) {
 	ct.lastEval = evalCount
 }
 
+// Reset zeroes the token counters so a fresh conversation starts clean.
+func (ct *ContextTracker) Reset() {
+	ct.lastPromptEval = 0
+	ct.lastEval = 0
+}
+
 // TokenUsage returns the current total token usage (prompt + completion).
 func (ct *ContextTracker) TokenUsage() int {
 	return ct.lastPromptEval + ct.lastEval

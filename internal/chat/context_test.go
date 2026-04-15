@@ -20,6 +20,17 @@ func TestContextTrackerUpdateSetsTokenCounts(t *testing.T) {
 	assert.Equal(t, 600, ct.TokenUsage())
 }
 
+func TestContextTrackerResetZeroesCounters(t *testing.T) {
+	ct := NewContextTracker(8192, 0.85)
+	ct.Update(500, 100)
+	require.Equal(t, 600, ct.TokenUsage(), "precondition: token usage before reset")
+
+	ct.Reset()
+
+	assert.Equal(t, 0, ct.TokenUsage(), "token usage must be zero after Reset")
+	assert.False(t, ct.ShouldTruncate(), "should not truncate after Reset")
+}
+
 func TestContextTrackerShouldTruncateFalseWhenBelowThreshold(t *testing.T) {
 	ct := NewContextTracker(8192, 0.85)
 	// Threshold = 8192 * 0.85 = 6963.2
