@@ -50,7 +50,7 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
 
 **Milestone Goal:** Named assistant profiles with custom system prompts, models, and providers — plus config path standardization and conversation reset.
 
-- [ ] **Phase 14: Config Path Migration** - Standardize config to `~/.config/fenec` with automatic macOS migration
+- [x] **Phase 14: Config Path Migration** - Standardize config to `~/.config/fenec` with automatic macOS migration (completed 2026-04-15)
 - [ ] **Phase 15: Clear Command** - `/clear` REPL command resets conversation mid-session without data loss
 - [ ] **Phase 16: Profile Package** - Profile data model with TOML frontmatter parsing, file I/O, and validation
 - [ ] **Phase 17: System Flag** - `--system <file>` flag for ad-hoc system prompt override
@@ -68,9 +68,9 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
   2. Existing macOS user's data auto-migrates from `~/Library/Application Support/fenec` to `~/.config/fenec` on first run
   3. User sees migration feedback message on stderr confirming successful migration
   4. All existing features (sessions, tools, config, system.md) work identically after migration
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 14-01-PLAN.md — ConfigDir standardization, migration logic, and main.go wiring (TDD)
+- [x] 14-01-PLAN.md — ConfigDir standardization, migration logic, and main.go wiring (TDD)
 
 ### Phase 15: Clear Command
 **Goal**: User can reset conversation mid-session without losing previous context or breaking REPL state
@@ -143,7 +143,7 @@ Plans:
 | 11. Model Routing | v1.1 | 2/2 | Complete | 2026-04-14 |
 | 12. Copilot Provider | v1.2 | 2/2 | Complete   | 2026-04-14 |
 | 13. Model Catalog | v1.2 | 2/2 | Complete   | 2026-04-14 |
-| 14. Config Path Migration | v1.3 | 0/1 | Planned | - |
+| 14. Config Path Migration | v1.3 | 1/1 | Complete    | 2026-04-15 |
 | 15. Clear Command | v1.3 | 0/? | Not started | - |
 | 16. Profile Package | v1.3 | 0/? | Not started | - |
 | 17. System Flag | v1.3 | 0/? | Not started | - |
