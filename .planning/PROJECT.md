@@ -42,6 +42,7 @@ An extensible AI agent platform that can grow its own capabilities through self-
 - ✓ `type = "copilot"` provider with zero-config auth via `gh auth token` — v1.2
 - ✓ GitHub Models catalog listing (40+ models) with real context lengths — v1.2
 - ✓ Ping validates auth/connectivity via catalog fetch, no chat round-trip — v1.2
+- ✓ Config path standardization to `~/.config/fenec` with macOS migration — v1.3
 
 ### Active
 
@@ -49,7 +50,6 @@ An extensible AI agent platform that can grow its own capabilities through self-
 - [ ] Named profiles with TOML frontmatter + markdown system prompt
 - [ ] Profile activation via `--profile` flag
 - [ ] Profile management CLI: `fenec profile create/list/edit`
-- [ ] Config path standardization to `~/.config/fenec` with macOS migration
 - [ ] `/clear` REPL command for mid-session conversation reset
 
 ### Out of Scope
@@ -119,4 +119,4 @@ This document evolves at phase transitions and milestone boundaries.
 | net/http removed from copilot.go after Phase 13 | All HTTP lives in catalog.go — copilot.go is pure provider facade | ✓ Good — clean separation of concerns |
 
 ---
-*Last updated: 2026-04-14 after v1.3 milestone start*
+*Last updated: 2026-04-15 after Phase 14 config-path-migration complete*
