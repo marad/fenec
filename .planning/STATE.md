@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: GitHub Models Provider
-status: Milestone v1.2 shipped — GitHub Models Provider fully implemented
-stopped_at: Completed 13-02-PLAN.md
-last_updated: "2026-04-14T18:11:35.050Z"
+milestone: v1.3
+milestone_name: Profiles & Config
+status: planning
+stopped_at: ""
+last_updated: "2026-04-14T18:46:00.000Z"
 last_activity: 2026-04-14
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-14)
 
 **Core value:** An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
-**Current focus:** Planning next milestone
+**Current focus:** v1.3 Profiles & Config — defining requirements
 
 ## Current Position
 
-Phase: — (v1.2 complete)
+Phase: Not started (defining requirements)
 Plan: —
-Status: Milestone v1.2 shipped — GitHub Models Provider fully implemented
-Last activity: 2026-04-14
+Status: Defining requirements
+Last activity: 2026-04-14 — Milestone v1.3 started
 
 ## Performance Metrics
 

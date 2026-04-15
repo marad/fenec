@@ -8,9 +8,17 @@ A personal AI assistant platform built in Go with Lua extensibility. Provides a 
 
 An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
 
-## Current Milestone: _Planning next milestone_
+## Current Milestone: v1.3 Profiles & Config
 
-**Status:** v1.2 shipped — GitHub Models Provider fully implemented. Run `/gsd-new-milestone` to define v1.3.
+**Goal:** Named assistant profiles with custom system prompts, models, and providers — plus config path standardization and conversation reset.
+
+**Target features:**
+- `--system <file>` flag for ad-hoc system prompt override per invocation
+- Named profiles in `~/.config/fenec/profiles/<name>.md` (markdown body = system prompt, TOML frontmatter = model + provider)
+- `--profile <name>` / `-P <name>` flag to activate a saved profile
+- `fenec profile create/list/edit` CLI subcommands for profile management
+- Config path migration: `~/Library/Application Support/fenec` → `~/.config/fenec` on macOS (with auto-migration)
+- `/clear` REPL command to reset conversation mid-session
 
 ## Requirements
 
@@ -37,7 +45,12 @@ An extensible AI agent platform that can grow its own capabilities through self-
 
 ### Active
 
-_(Define with `/gsd-new-milestone`)_
+- [ ] Ad-hoc system prompt override via `--system` flag
+- [ ] Named profiles with TOML frontmatter + markdown system prompt
+- [ ] Profile activation via `--profile` flag
+- [ ] Profile management CLI: `fenec profile create/list/edit`
+- [ ] Config path standardization to `~/.config/fenec` with macOS migration
+- [ ] `/clear` REPL command for mid-session conversation reset
 
 ### Out of Scope
 
@@ -106,4 +119,4 @@ This document evolves at phase transitions and milestone boundaries.
 | net/http removed from copilot.go after Phase 13 | All HTTP lives in catalog.go — copilot.go is pure provider facade | ✓ Good — clean separation of concerns |
 
 ---
-*Last updated: 2026-04-14 after v1.2 milestone*
+*Last updated: 2026-04-14 after v1.3 milestone start*
