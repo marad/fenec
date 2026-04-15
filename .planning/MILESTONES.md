@@ -1,5 +1,20 @@
 # Milestones
 
+## v1.3 Profiles & Config (Shipped: 2026-04-15)
+
+**Phases completed:** 6 phases, 6 plans
+
+**Key accomplishments:**
+
+- Config path migration to `~/.config/fenec` on all platforms with automatic macOS migration from `~/Library/Application Support/fenec` — atomic rename, stderr feedback, all existing features work identically after migration
+- `/clear` REPL command resets conversation mid-session with auto-save — previous context persisted to named file, system prompt and tool descriptions preserved, token tracking reset
+- Profile data model with `+++`-delimited TOML frontmatter and markdown body — `Parse()`, `Load()`, `List()` API with path traversal protection and graceful edge case handling (empty body, malformed TOML)
+- `--system <file>` flag for ad-hoc system prompt override per invocation — hard fail on missing file, complete prompt replacement, tool descriptions remain functional
+- `--profile <name>` / `-P <name>` flag with three-layer precedence chains — model: `--model` > profile > config default (using `pflag.Changed()` guard); prompt: `--system` > profile > config default (with empty-body fallthrough)
+- `fenec profile list/create/edit` CLI subcommands via pre-pflag `os.Args` dispatch — tabwriter-formatted listing, `$EDITOR` integration with template scaffolding, path traversal protection
+
+---
+
 ## v1.2 GitHub Models Provider (Shipped: 2026-04-14)
 
 **Phases completed:** 2 phases, 4 plans, 4 tasks

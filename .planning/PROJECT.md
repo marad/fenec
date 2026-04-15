@@ -8,17 +8,16 @@ A personal AI assistant platform built in Go with Lua extensibility. Provides a 
 
 An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
 
-## Current Milestone: v1.3 Profiles & Config
+## Current Milestone: (none — v1.3 shipped)
 
-**Goal:** Named assistant profiles with custom system prompts, models, and providers — plus config path standardization and conversation reset.
+**v1.3 Profiles & Config shipped 2026-04-15.** Run `/gsd-new-milestone` to start v1.4.
 
-**Target features:**
-- `--system <file>` flag for ad-hoc system prompt override per invocation
-- Named profiles in `~/.config/fenec/profiles/<name>.md` (markdown body = system prompt, TOML frontmatter = model + provider)
-- `--profile <name>` / `-P <name>` flag to activate a saved profile
-- `fenec profile create/list/edit` CLI subcommands for profile management
-- Config path migration: `~/Library/Application Support/fenec` → `~/.config/fenec` on macOS (with auto-migration)
-- `/clear` REPL command to reset conversation mid-session
+**Shipped in v1.3:**
+- Config path migration to `~/.config/fenec` with macOS auto-migration
+- `/clear` REPL command for mid-session conversation reset
+- Named profiles with TOML frontmatter + markdown system prompts
+- `--system` and `--profile` flags with 3-layer precedence chains
+- `fenec profile list/create/edit` CLI subcommands
 
 ## Requirements
 
@@ -43,14 +42,15 @@ An extensible AI agent platform that can grow its own capabilities through self-
 - ✓ GitHub Models catalog listing (40+ models) with real context lengths — v1.2
 - ✓ Ping validates auth/connectivity via catalog fetch, no chat round-trip — v1.2
 - ✓ Config path standardization to `~/.config/fenec` with macOS migration — v1.3
+- ✓ Ad-hoc system prompt override via `--system` flag — v1.3
+- ✓ Named profiles with TOML frontmatter + markdown system prompt — v1.3
+- ✓ Profile activation via `--profile` flag with precedence chains — v1.3
+- ✓ Profile management CLI: `fenec profile create/list/edit` — v1.3
+- ✓ `/clear` REPL command for mid-session conversation reset — v1.3
 
 ### Active
 
-- [ ] Ad-hoc system prompt override via `--system` flag
-- [ ] Named profiles with TOML frontmatter + markdown system prompt
-- [ ] Profile activation via `--profile` flag
-- [ ] Profile management CLI: `fenec profile create/list/edit`
-- [ ] `/clear` REPL command for mid-session conversation reset
+(None — start `/gsd-new-milestone` for v1.4)
 
 ### Out of Scope
 
@@ -68,7 +68,7 @@ An extensible AI agent platform that can grow its own capabilities through self-
 - gopher-lua (pure Go Lua 5.1 VM) embeds well and provides fast script execution
 - The self-extension pattern means the agent's tool library grows with use
 - Architecture is designed for easy addition of new built-in tools and integrations
-- As of v1.2: ~11,300 LOC Go; 3 provider adapters (ollama, openai-compat, copilot); 5-method Provider interface
+- As of v1.3: ~12,400 LOC Go; 3 provider adapters (ollama, openai-compat, copilot); named profiles with TOML frontmatter; config at ~/.config/fenec
 - GitHub Models copilot provider connects to `https://models.github.ai/inference` via the openai-go v3 SDK, authenticated through the `gh` CLI session
 
 ## Constraints
@@ -93,6 +93,10 @@ An extensible AI agent platform that can grow its own capabilities through self-
 | openai-go v3 SDK | Official OpenAI Go client for OpenAI-compatible adapters | ✓ Good — full streaming + tool call support |
 | `provider/model` syntax via `/` delimiter | Natural, URL-inspired routing syntax for CLI and REPL | ✓ Good — `/model` listing + `--model` flag consistent |
 | Hot-reload with fsnotify + debounce | Live config changes without restart | ✓ Good — 100ms debounce handles editor atomic saves |
+| +++‑delimited TOML frontmatter for profiles | Hugo-style, familiar to devs, easy to parse | ✓ Good — clean separation of metadata and prompt |
+| pflag.Changed("model") guard for precedence | Distinguishes explicit --model from profile-set model | ✓ Good — prevents provider leak across layers |
+| Pre-pflag os.Args dispatch for subcommands | Avoids pflag conflict without Cobra overhead | ✓ Good — sufficient for 3 subcommands |
+| $EDITOR integration for profile create/edit | Reuses user's preferred editor, no custom UI needed | ✓ Good — familiar workflow |
 
 ## Evolution
 
@@ -119,4 +123,4 @@ This document evolves at phase transitions and milestone boundaries.
 | net/http removed from copilot.go after Phase 13 | All HTTP lives in catalog.go — copilot.go is pure provider facade | ✓ Good — clean separation of concerns |
 
 ---
-*Last updated: 2026-04-15 after Phase 14 config-path-migration complete*
+*Last updated: 2026-04-15 after v1.3 Profiles & Config milestone complete*
