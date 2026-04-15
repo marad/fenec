@@ -81,7 +81,9 @@ Plans:
   2. Previous conversation auto-saves to named file before clear — no data loss
   3. System prompt and tool descriptions remain functional after clear (tools still callable)
   4. Token tracking resets — no phantom truncation on fresh conversation after clear
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 15-01-PLAN.md — /clear command with auto-save, state reset, and test coverage
 
 ### Phase 16: Profile Package
 **Goal**: Profile data model and file I/O enable creating, loading, and listing named profiles with TOML frontmatter and markdown system prompts
@@ -144,7 +146,7 @@ Plans:
 | 12. Copilot Provider | v1.2 | 2/2 | Complete   | 2026-04-14 |
 | 13. Model Catalog | v1.2 | 2/2 | Complete   | 2026-04-14 |
 | 14. Config Path Migration | v1.3 | 1/1 | Complete    | 2026-04-15 |
-| 15. Clear Command | v1.3 | 0/? | Not started | - |
+| 15. Clear Command | v1.3 | 0/1 | Not started | - |
 | 16. Profile Package | v1.3 | 0/? | Not started | - |
 | 17. System Flag | v1.3 | 0/? | Not started | - |
 | 18. Profile Flag | v1.3 | 0/? | Not started | - |
