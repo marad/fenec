@@ -68,27 +68,27 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CFG-01 | — | Pending |
-| CFG-02 | — | Pending |
-| CFG-03 | — | Pending |
-| CONV-01 | — | Pending |
-| CONV-02 | — | Pending |
-| CONV-03 | — | Pending |
-| PROF-01 | — | Pending |
-| PROF-02 | — | Pending |
-| PROF-03 | — | Pending |
-| PROF-04 | — | Pending |
-| PROF-05 | — | Pending |
-| PROF-06 | — | Pending |
-| FLAG-01 | — | Pending |
-| FLAG-02 | — | Pending |
-| FLAG-03 | — | Pending |
-| FLAG-04 | — | Pending |
+| CFG-01 | Phase 14 | Pending |
+| CFG-02 | Phase 14 | Pending |
+| CFG-03 | Phase 14 | Pending |
+| CONV-01 | Phase 15 | Pending |
+| CONV-02 | Phase 15 | Pending |
+| CONV-03 | Phase 15 | Pending |
+| PROF-01 | Phase 16 | Pending |
+| PROF-02 | Phase 16 | Pending |
+| PROF-03 | Phase 16 | Pending |
+| FLAG-01 | Phase 17 | Pending |
+| FLAG-02 | Phase 18 | Pending |
+| FLAG-03 | Phase 18 | Pending |
+| FLAG-04 | Phase 18 | Pending |
+| PROF-04 | Phase 19 | Pending |
+| PROF-05 | Phase 19 | Pending |
+| PROF-06 | Phase 19 | Pending |
 
 **Coverage:**
 - v1.3 requirements: 16 total
-- Mapped to phases: 0
-- Unmapped: 16 ⚠️ (pending roadmap creation)
+- Mapped to phases: 16
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2025-07-18*

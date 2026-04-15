@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Profiles & Config
-status: planning
+status: ready_to_plan
 stopped_at: ""
-last_updated: "2026-04-14T18:46:00.000Z"
-last_activity: 2026-04-14
+last_updated: "2025-07-18T12:00:00.000Z"
+last_activity: 2025-07-18
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -18,19 +18,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-14)
+See: .planning/PROJECT.md (updated 2025-07-18)
 
 **Core value:** An extensible AI agent platform that can grow its own capabilities through self-authored Lua tools.
-**Current focus:** v1.3 Profiles & Config — defining requirements
+**Current focus:** v1.3 Profiles & Config — Phase 14 ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 14 of 19 (Config Path Migration) — first of 6 phases in v1.3
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-14 — Milestone v1.3 started
+Status: Ready to plan
+Last activity: 2025-07-18 — Roadmap created for v1.3 (Phases 14-19)
 
-## Performance Metrics
+Progress: [░░░░░░░░░░] 0%
 
 **Velocity (from v1.0):**
 
@@ -94,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last activity: 2026-04-14
-Stopped at: v1.2 milestone archived — ready for /gsd-new-milestone
+Last activity: 2025-07-18
+Stopped at: Roadmap created for v1.3 — ready for /gsd-plan-phase 14
 Resume file: None
