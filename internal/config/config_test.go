@@ -191,6 +191,15 @@ func TestToolsDirDoesNotCreate(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "ToolsDir should not create the directory")
 }
 
+func TestProfilesDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	dir, err := ProfilesDir()
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(tmpDir, ".config", "fenec", "profiles"), dir)
+}
+
 func TestDefaultHostValue(t *testing.T) {
 	assert.Equal(t, "http://localhost:11434", DefaultHost)
 }
