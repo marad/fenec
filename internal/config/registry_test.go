@@ -62,7 +62,7 @@ func TestRegistryUpdate(t *testing.T) {
 		"new1": &mockProvider{name: "new1"},
 		"new2": &mockProvider{name: "new2"},
 	}
-	reg.Update(newProviders, "new1")
+	reg.Update(newProviders, nil, "new1")
 
 	// Old provider is gone.
 	_, ok := reg.Get("old")
@@ -121,7 +121,7 @@ func TestRegistryDefaultNameAfterUpdate(t *testing.T) {
 
 	reg.Update(map[string]provider.Provider{
 		"openai": &mockProvider{name: "openai"},
-	}, "openai")
+	}, nil, "openai")
 
 	assert.Equal(t, "openai", reg.DefaultName())
 }
@@ -131,6 +131,53 @@ func TestRegistryDefaultNameEmpty(t *testing.T) {
 	assert.Equal(t, "", reg.DefaultName())
 }
 
+func TestRegistryDefaultModelFor(t *testing.T) {
+	reg := NewProviderRegistry()
+	reg.Register("ollama", &mockProvider{name: "ollama"})
+	reg.Register("openai", &mockProvider{name: "openai"})
+	reg.SetDefaultModel("ollama", "gemma4")
+	reg.SetDefaultModel("openai", "gpt-4o")
+
+	assert.Equal(t, "gemma4", reg.DefaultModelFor("ollama"))
+	assert.Equal(t, "gpt-4o", reg.DefaultModelFor("openai"))
+	assert.Equal(t, "", reg.DefaultModelFor("nonexistent"))
+}
+
+func TestRegistrySetDefaultModelEmptyClears(t *testing.T) {
+	reg := NewProviderRegistry()
+	reg.Register("ollama", &mockProvider{name: "ollama"})
+	reg.SetDefaultModel("ollama", "gemma4")
+	assert.Equal(t, "gemma4", reg.DefaultModelFor("ollama"))
+
+	reg.SetDefaultModel("ollama", "")
+	assert.Equal(t, "", reg.DefaultModelFor("ollama"))
+}
+
+func TestRegistryUpdateReplacesDefaultModels(t *testing.T) {
+	reg := NewProviderRegistry()
+	reg.Register("ollama", &mockProvider{name: "ollama"})
+	reg.SetDefaultModel("ollama", "gemma4")
+
+	reg.Update(map[string]provider.Provider{
+		"openai": &mockProvider{name: "openai"},
+	}, map[string]string{"openai": "gpt-4o"}, "openai")
+
+	assert.Equal(t, "", reg.DefaultModelFor("ollama"))
+	assert.Equal(t, "gpt-4o", reg.DefaultModelFor("openai"))
+}
+
+func TestRegistryUpdateNilDefaultModelsClears(t *testing.T) {
+	reg := NewProviderRegistry()
+	reg.Register("ollama", &mockProvider{name: "ollama"})
+	reg.SetDefaultModel("ollama", "gemma4")
+
+	reg.Update(map[string]provider.Provider{
+		"ollama": &mockProvider{name: "ollama"},
+	}, nil, "ollama")
+
+	assert.Equal(t, "", reg.DefaultModelFor("ollama"))
+}
+
 func TestRegistryConcurrentAccess(t *testing.T) {
 	reg := NewProviderRegistry()
 	reg.Register("initial", &mockProvider{name: "initial"})
@@ -138,7 +185,7 @@ func TestRegistryConcurrentAccess(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	// 10 readers doing Get/Default.
+	// 10 readers doing Get/Default/Names/DefaultModelFor.
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
@@ -147,11 +194,12 @@ func TestRegistryConcurrentAccess(t *testing.T) {
 				reg.Get("initial")
 				reg.Default()
 				reg.Names()
+				reg.DefaultModelFor("initial")
 			}
 		}()
 	}
 
-	// 2 writers doing Update.
+	// 2 writers doing Update + SetDefaultModel.
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
 		go func() {
@@ -159,7 +207,8 @@ func TestRegistryConcurrentAccess(t *testing.T) {
 			for j := 0; j < 50; j++ {
 				reg.Update(map[string]provider.Provider{
 					"updated": &mockProvider{name: "updated"},
-				}, "updated")
+				}, map[string]string{"updated": "model-a"}, "updated")
+				reg.SetDefaultModel("updated", "model-b")
 			}
 		}()
 	}

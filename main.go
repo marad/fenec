@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	pflag "github.com/spf13/pflag"
@@ -102,6 +102,9 @@ Flags:
 			continue
 		}
 		providerRegistry.Register(name, p)
+		if pc.DefaultModel != "" {
+			providerRegistry.SetDefaultModel(name, pc.DefaultModel)
+		}
 	}
 	providerRegistry.SetDefault(cfg.DefaultProvider)
 
@@ -131,6 +134,7 @@ Flags:
 		}
 		// Rebuild all providers from new config.
 		newProviders := make(map[string]provider.Provider)
+		newDefaultModels := make(map[string]string)
 		for name, pc := range newCfg.Providers {
 			newP, createErr := config.CreateProvider(name, pc)
 			if createErr != nil {
@@ -138,8 +142,11 @@ Flags:
 				continue
 			}
 			newProviders[name] = newP
+			if pc.DefaultModel != "" {
+				newDefaultModels[name] = pc.DefaultModel
+			}
 		}
-		providerRegistry.Update(newProviders, newCfg.DefaultProvider)
+		providerRegistry.Update(newProviders, newDefaultModels, newCfg.DefaultProvider)
 		slog.Info("config reloaded", "providers", len(newProviders))
 	})
 	if err != nil {
@@ -179,29 +186,29 @@ Flags:
 		}
 	}
 
-	// Handle --model flag: support "provider/model" or bare "model" syntax.
-	// Uses modelExplicit (Changed check) to distinguish user --model from profile-set model.
-	if modelExplicit {
-		if idx := strings.Index(*modelName, "/"); idx != -1 {
-			parts := strings.SplitN(*modelName, "/", 2)
-			providerName, modelPart := parts[0], parts[1]
-			namedProvider, ok := providerRegistry.Get(providerName)
-			if !ok {
-				fmt.Fprintf(os.Stderr, "Provider %q not found. Available providers:\n", providerName)
-				for _, n := range providerRegistry.Names() {
-					fmt.Fprintf(os.Stderr, "  - %s\n", n)
-				}
-				os.Exit(1)
+	// Resolve --model flag against the registry (supports "provider/model",
+	// "provider/", or bare "model" syntax; falls back through per-provider
+	// then top-level defaults when no flag is given).
+	resolution, err := config.ResolveModel(providerRegistry, *modelName, modelExplicit, cfg.DefaultModel, p, activeProviderName)
+	if err != nil {
+		var unknownErr *config.UnknownProviderError
+		var noDefaultErr *config.NoDefaultModelError
+		switch {
+		case errors.As(err, &unknownErr):
+			fmt.Fprintf(os.Stderr, "Provider %q not found. Available providers:\n", unknownErr.Name)
+			for _, n := range unknownErr.Available {
+				fmt.Fprintf(os.Stderr, "  - %s\n", n)
 			}
-			p = namedProvider
-			activeProviderName = providerName
-			*modelName = modelPart
+		case errors.As(err, &noDefaultErr):
+			fmt.Fprintf(os.Stderr, "Provider %q has no default_model configured. Specify a model (e.g. %s/<model>).\n", noDefaultErr.ProviderName, noDefaultErr.ProviderName)
+		default:
+			fmt.Fprintln(os.Stderr, render.FormatError(err.Error()))
 		}
-		// If no "/" just use the flag value as-is (bare model name).
-	} else if *modelName == "" && cfg.DefaultModel != "" {
-		// No --model flag, no profile model — fall back to config default.
-		*modelName = cfg.DefaultModel
+		os.Exit(1)
 	}
+	p = resolution.Provider
+	activeProviderName = resolution.ProviderName
+	*modelName = resolution.ModelName
 
 	// Health check: if the selected provider is unreachable, show error and exit.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

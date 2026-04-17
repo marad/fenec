@@ -13,13 +13,16 @@ import (
 type ProviderRegistry struct {
 	mu              sync.RWMutex
 	providers       map[string]provider.Provider
+	defaultModels   map[string]string
 	defaultProvider string
 }
 
-// NewProviderRegistry returns an initialized registry with an empty providers map.
+// NewProviderRegistry returns an initialized registry with empty providers
+// and default-models maps.
 func NewProviderRegistry() *ProviderRegistry {
 	return &ProviderRegistry{
-		providers: make(map[string]provider.Provider),
+		providers:     make(map[string]provider.Provider),
+		defaultModels: make(map[string]string),
 	}
 }
 
@@ -28,6 +31,24 @@ func (r *ProviderRegistry) Register(name string, p provider.Provider) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.providers[name] = p
+}
+
+// SetDefaultModel records the per-provider default model. Empty model clears it.
+func (r *ProviderRegistry) SetDefaultModel(name, model string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if model == "" {
+		delete(r.defaultModels, name)
+		return
+	}
+	r.defaultModels[name] = model
+}
+
+// DefaultModelFor returns the per-provider default model, or "" if none is set.
+func (r *ProviderRegistry) DefaultModelFor(name string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.defaultModels[name]
 }
 
 // SetDefault sets the name of the default provider.
@@ -56,11 +77,20 @@ func (r *ProviderRegistry) Default() (provider.Provider, error) {
 	return p, nil
 }
 
-// Update atomically replaces all providers and the default name.
-func (r *ProviderRegistry) Update(providers map[string]provider.Provider, defaultName string) {
+// Update atomically replaces all providers, per-provider default models, and
+// the default provider name. A nil defaultModels map clears all per-provider
+// defaults.
+func (r *ProviderRegistry) Update(providers map[string]provider.Provider, defaultModels map[string]string, defaultName string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.providers = providers
+	// Never store nil: SetDefaultModel writes directly into this map and would
+	// panic on assignment to a nil map.
+	if defaultModels == nil {
+		r.defaultModels = make(map[string]string)
+	} else {
+		r.defaultModels = defaultModels
+	}
 	r.defaultProvider = defaultName
 }
 
