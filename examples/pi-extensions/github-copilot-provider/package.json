@@ -1,0 +1,29 @@
+{
+  "name": "github-copilot-provider",
+  "version": "1.0.0",
+  "description": "GitHub Copilot Provider dla Pi Agent - integracja z GitHub Models API",
+  "author": "Fenec Community",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.ts",
+  "keywords": [
+    "pi",
+    "agent",
+    "copilot",
+    "github",
+    "models",
+    "gpt-4",
+    "provider"
+  ],
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  }
+}

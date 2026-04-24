@@ -45,7 +45,8 @@ type Provider struct {
 // If apiKey is empty, a dummy key is set to prevent the SDK from reading
 // the OPENAI_API_KEY environment variable (local providers like LM Studio
 // do not need a real key).
-func New(baseURL, apiKey string) (*Provider, error) {
+// Extra option.RequestOption values are appended to the default options.
+func New(baseURL, apiKey string, extraOpts ...option.RequestOption) (*Provider, error) {
 	opts := []option.RequestOption{
 		option.WithMaxRetries(2),
 	}
@@ -57,6 +58,7 @@ func New(baseURL, apiKey string) (*Provider, error) {
 	} else {
 		opts = append(opts, option.WithAPIKey("not-needed"))
 	}
+	opts = append(opts, extraOpts...)
 	client := sdkoai.NewClient(opts...)
 	return &Provider{
 		completions: &client.Chat.Completions,
