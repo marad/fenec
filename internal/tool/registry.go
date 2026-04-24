@@ -22,6 +22,14 @@ type ToolInfoEntry struct {
 
 // Tool defines the interface that all tools (built-in and Lua) must implement.
 // This is the extension point for Phase 4 Lua tools.
+//
+// Error return convention:
+//   - Return (result, nil) with a JSON error payload for model-correctable issues
+//     (e.g., file not found, validation failure). The model sees the error and can
+//     adjust its next request.
+//   - Return ("", error) for programming errors and infrastructure failures
+//     (e.g., missing required argument, I/O failure). These are logged and
+//     surfaced as a generic tool error to the model.
 type Tool interface {
 	// Name returns the unique identifier used for dispatch.
 	Name() string
@@ -122,13 +130,22 @@ func (r *Registry) Dispatch(ctx context.Context, call model.ToolCall) (string, e
 
 // Describe returns a multi-line string listing all tools with name and description.
 // Format: "- tool_name: description". Used for system prompt injection.
+// Tools are sorted by name for deterministic output across runs.
 func (r *Registry) Describe() string {
 	if len(r.tools) == 0 {
 		return ""
 	}
+
+	// Sort tool names for deterministic system prompt generation.
+	names := make([]string, 0, len(r.tools))
+	for name := range r.tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
 	var b strings.Builder
-	for _, t := range r.tools {
-		def := t.Definition()
+	for _, name := range names {
+		def := r.tools[name].Definition()
 		fmt.Fprintf(&b, "- %s: %s\n", def.Function.Name, def.Function.Description)
 	}
 	return b.String()

@@ -1,6 +1,8 @@
 package session
 
 import (
+	"crypto/rand"
+	"fmt"
 	"time"
 
 	"github.com/marad/fenec/internal/model"
@@ -25,11 +27,14 @@ type SessionInfo struct {
 }
 
 // NewSession creates a new session with the given model.
-// ID is derived from the current timestamp.
+// ID includes milliseconds and a random suffix to avoid collisions
+// when sessions are created in rapid succession (e.g., /clear).
 func NewSession(model string) *Session {
 	now := time.Now()
+	var suffix [2]byte
+	rand.Read(suffix[:])
 	return &Session{
-		ID:        now.Format("2006-01-02T15-04-05"),
+		ID:        fmt.Sprintf("%s-%x", now.Format("2006-01-02T15-04-05.000"), suffix),
 		Model:     model,
 		CreatedAt: now,
 		UpdatedAt: now,

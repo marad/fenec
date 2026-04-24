@@ -25,9 +25,9 @@ func TestNewSession(t *testing.T) {
 	assert.False(t, sess.CreatedAt.After(after), "CreatedAt should be <= after")
 	assert.Equal(t, sess.CreatedAt, sess.UpdatedAt, "CreatedAt and UpdatedAt should match initially")
 
-	// ID should be in the expected timestamp format.
-	_, err := time.Parse("2006-01-02T15-04-05", sess.ID)
-	assert.NoError(t, err, "ID should be parseable as timestamp format 2006-01-02T15-04-05")
+	// ID should start with a parseable timestamp and end with a hex suffix.
+	assert.Regexp(t, `^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}-[0-9a-f]{4}$`, sess.ID,
+		"ID should match format 2006-01-02T15-04-05.000-xxxx")
 }
 
 func TestSessionJSONRoundTrip(t *testing.T) {

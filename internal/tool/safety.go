@@ -16,6 +16,11 @@ type dangerousPattern struct {
 // dangerousPatterns contains patterns that indicate a potentially destructive command.
 // Patterns with commandBoundary=true only match when they appear as a standalone
 // command (not as a substring of another word like "add" matching "dd").
+//
+// NOTE: this is a heuristic safety check, not a security boundary. A determined
+// user or model can bypass it (e.g., via aliasing, encoding tricks, or
+// interpreter wrappers not listed here). All dangerous commands are still
+// gated by the approval prompt.
 var dangerousPatterns = []dangerousPattern{
 	{pattern: "rm ", commandBoundary: true},
 	{pattern: "rm\t", commandBoundary: true},
@@ -37,6 +42,14 @@ var dangerousPatterns = []dangerousPattern{
 	{pattern: "apt ", commandBoundary: true},
 	{pattern: "dnf ", commandBoundary: true},
 	{pattern: "pacman ", commandBoundary: true},
+	// Interpreter wrappers that can execute arbitrary commands.
+	{pattern: "bash ", commandBoundary: true},
+	{pattern: "bash\t", commandBoundary: true},
+	{pattern: "sh ", commandBoundary: true},
+	{pattern: "sh\t", commandBoundary: true},
+	{pattern: "env ", commandBoundary: true},
+	{pattern: "nohup ", commandBoundary: true},
+	{pattern: "eval ", commandBoundary: true},
 }
 
 // commandSeparators are shell constructs that introduce a new command.

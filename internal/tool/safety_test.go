@@ -244,3 +244,44 @@ func TestIsDangerous_leading_whitespace(t *testing.T) {
 func TestIsDangerous_multiple_dangerous(t *testing.T) {
 	assert.True(t, IsDangerous("rm file.txt && dd if=/dev/zero of=/dev/sda"))
 }
+
+// === Tests for interpreter wrapper patterns (M-3) ===
+
+func TestIsDangerous_bash_c(t *testing.T) {
+	assert.True(t, IsDangerous("bash -c 'rm -rf /'"))
+}
+
+func TestIsDangerous_sh_c(t *testing.T) {
+	assert.True(t, IsDangerous("sh -c 'echo pwned'"))
+}
+
+func TestIsDangerous_env_command(t *testing.T) {
+	assert.True(t, IsDangerous("env rm -rf /tmp/foo"))
+}
+
+func TestIsDangerous_nohup_command(t *testing.T) {
+	assert.True(t, IsDangerous("nohup ./script.sh &"))
+}
+
+func TestIsDangerous_eval_command(t *testing.T) {
+	assert.True(t, IsDangerous("eval 'rm -rf /'"))
+}
+
+func TestIsDangerous_bash_after_pipe(t *testing.T) {
+	assert.True(t, IsDangerous("echo 'rm /' | bash -c 'cat'"))
+}
+
+func TestIsDangerous_bash_substring_not_dangerous(t *testing.T) {
+	// "bashrc" contains "bash" but should not trigger at command boundary
+	assert.False(t, IsDangerous("cat ~/.bashrc"))
+}
+
+func TestIsDangerous_eval_substring_not_dangerous(t *testing.T) {
+	// "evaluate" starts with "eval" but "eval " requires a space
+	assert.False(t, IsDangerous("echo evaluate"))
+}
+
+func TestIsDangerous_env_var_not_dangerous(t *testing.T) {
+	// "environment" starts with "env" but "env " requires space
+	assert.False(t, IsDangerous("echo environment"))
+}

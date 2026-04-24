@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/chzyer/readline"
@@ -99,7 +100,7 @@ func NewREPL(p provider.Provider, model string, activeProvider string, systemPro
 	// Ctrl+C / SIGINT handling (per D-04).
 	// When streaming, cancel the active generation.
 	// When not streaming, readline's default InterruptPrompt handles it (clears input).
-	signal.Notify(r.sigCh, os.Interrupt)
+	signal.Notify(r.sigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		for range r.sigCh {
 			r.mu.Lock()
@@ -309,6 +310,55 @@ func isContinuation(line string) bool {
 
 const maxToolRounds = 10
 
+// streamResult holds the outcome of a single streamAndCollect call.
+type streamResult struct {
+	content string
+	msg     *model.Message
+	metrics *model.StreamMetrics
+	err     error
+}
+
+// streamAndCollect streams a provider response, showing a spinner until the
+// first token arrives. Returns the collected content, final message, and
+// metrics. This extracts the duplicated streaming/spinner pattern used both
+// in the agentic tool loop and the max-rounds summary fallback.
+func (r *REPL) streamAndCollect(ctx context.Context, req *provider.ChatRequest) streamResult {
+	sp := render.NewSpinner(r.rl.Stdout())
+	sp.Start()
+
+	var content strings.Builder
+	thinkingStarted := false
+	contentStarted := false
+
+	msg, metrics, err := r.provider.StreamChat(ctx, req, func(token string) {
+		if !contentStarted {
+			contentStarted = true
+			sp.Stop()
+			if thinkingStarted {
+				fmt.Fprint(r.rl.Stdout(), "\n")
+			}
+		}
+		fmt.Fprint(r.rl.Stdout(), token)
+		content.WriteString(token)
+	}, func(chunk string) {
+		if !thinkingStarted {
+			sp.Stop()
+			fmt.Fprintln(r.rl.Stdout(), render.FormatThinkingLabel())
+			thinkingStarted = true
+		}
+		fmt.Fprint(r.rl.Stdout(), render.FormatThinkingChunk(chunk))
+	})
+
+	sp.Stop()
+
+	return streamResult{
+		content: content.String(),
+		msg:     msg,
+		metrics: metrics,
+		err:     err,
+	}
+}
+
 // sendMessage sends user input to the model and handles streaming output.
 // Implements the agentic loop: when the model returns tool calls, dispatch each,
 // feed results back, and re-send until the model responds with text only.
@@ -337,13 +387,6 @@ func (r *REPL) sendMessage(input string) {
 	}
 
 	for round := 0; round < maxToolRounds; round++ {
-		sp := render.NewSpinner(r.rl.Stdout())
-		sp.Start()
-
-		var content strings.Builder
-		thinkingStarted := false
-		contentStarted := false
-
 		// Build provider request from conversation state.
 		req := &provider.ChatRequest{
 			Model:         r.conv.Model,
@@ -353,50 +396,30 @@ func (r *REPL) sendMessage(input string) {
 			ContextLength: r.conv.ContextLength,
 		}
 
-		// Stream the response.
-		msg, metrics, err := r.provider.StreamChat(ctx, req, func(token string) {
-			if !contentStarted {
-				contentStarted = true
-				sp.Stop()
-				if thinkingStarted {
-					fmt.Fprint(r.rl.Stdout(), "\n")
-				}
-			}
-			fmt.Fprint(r.rl.Stdout(), token)
-			content.WriteString(token)
-		}, func(chunk string) {
-			if !thinkingStarted {
-				sp.Stop()
-				fmt.Fprintln(r.rl.Stdout(), render.FormatThinkingLabel())
-				thinkingStarted = true
-			}
-			fmt.Fprint(r.rl.Stdout(), render.FormatThinkingChunk(chunk))
-		})
+		sr := r.streamAndCollect(ctx, req)
 
-		sp.Stop()
-
-		if err != nil {
+		if sr.err != nil {
 			if ctx.Err() == context.Canceled {
 				fmt.Fprintln(r.rl.Stdout(), "\n[generation cancelled]")
-				if msg != nil && msg.Content != "" {
-					r.conv.AddAssistant(msg.Content)
+				if sr.msg != nil && sr.msg.Content != "" {
+					r.conv.AddAssistant(sr.msg.Content)
 				}
 				return
 			}
-			fmt.Fprintln(r.rl.Stdout(), render.FormatError(err.Error()))
+			fmt.Fprintln(r.rl.Stdout(), render.FormatError(sr.err.Error()))
 			return
 		}
 
 		// Check for tool calls.
-		if len(msg.ToolCalls) == 0 {
+		if len(sr.msg.ToolCalls) == 0 {
 			// No tool calls -- final text response.
-			if content.Len() > 0 {
-				r.conv.AddAssistant(content.String())
+			if sr.content != "" {
+				r.conv.AddAssistant(sr.content)
 			}
 
 			// Update context tracking and handle truncation.
-			if r.tracker != nil && metrics != nil {
-				r.tracker.Update(metrics.PromptEvalCount, metrics.EvalCount)
+			if r.tracker != nil && sr.metrics != nil {
+				r.tracker.Update(sr.metrics.PromptEvalCount, sr.metrics.EvalCount)
 				if r.tracker.ShouldTruncate() {
 					removed := r.tracker.TruncateOldest(r.conv)
 					if removed > 0 {
@@ -409,10 +432,10 @@ func (r *REPL) sendMessage(input string) {
 		}
 
 		// Model made tool calls -- add assistant message (with ToolCalls) to history.
-		r.conv.AddRawMessage(*msg)
+		r.conv.AddRawMessage(*sr.msg)
 
 		// Execute each tool call.
-		for _, tc := range msg.ToolCalls {
+		for _, tc := range sr.msg.ToolCalls {
 			// Print muted tool call indicator.
 			extra := ""
 			if cmdVal, ok := tc.Function.Arguments["command"]; ok {
@@ -435,8 +458,8 @@ func (r *REPL) sendMessage(input string) {
 		}
 
 		// Update context tracking after tool round.
-		if r.tracker != nil && metrics != nil {
-			r.tracker.Update(metrics.PromptEvalCount, metrics.EvalCount)
+		if r.tracker != nil && sr.metrics != nil {
+			r.tracker.Update(sr.metrics.PromptEvalCount, sr.metrics.EvalCount)
 		}
 
 		// Loop back for next round.
@@ -446,46 +469,21 @@ func (r *REPL) sendMessage(input string) {
 	fmt.Fprintf(r.rl.Stdout(), "\n[max tool rounds (%d) reached, requesting summary]\n", maxToolRounds)
 	r.conv.AddUser("Please summarize what you've done so far. Do not make any more tool calls.")
 
-	sp2 := render.NewSpinner(r.rl.Stdout())
-	sp2.Start()
-	var content strings.Builder
-	thinkingStarted2 := false
-	contentStarted2 := false
-
 	summaryReq := &provider.ChatRequest{
 		Model:         r.conv.Model,
 		Messages:      r.conv.Messages,
 		Think:         r.conv.Think,
 		ContextLength: r.conv.ContextLength,
 	}
-	msg, _, err := r.provider.StreamChat(ctx, summaryReq, func(token string) {
-		if !contentStarted2 {
-			contentStarted2 = true
-			sp2.Stop()
-			if thinkingStarted2 {
-				fmt.Fprint(r.rl.Stdout(), "\n")
-			}
-		}
-		fmt.Fprint(r.rl.Stdout(), token)
-		content.WriteString(token)
-	}, func(chunk string) {
-		if !thinkingStarted2 {
-			sp2.Stop()
-			fmt.Fprintln(r.rl.Stdout(), render.FormatThinkingLabel())
-			thinkingStarted2 = true
-		}
-		fmt.Fprint(r.rl.Stdout(), render.FormatThinkingChunk(chunk))
-	})
-	sp2.Stop()
+	sr := r.streamAndCollect(ctx, summaryReq)
 
-	if err != nil {
-		fmt.Fprintln(r.rl.Stdout(), render.FormatError(err.Error()))
+	if sr.err != nil {
+		fmt.Fprintln(r.rl.Stdout(), render.FormatError(sr.err.Error()))
 		return
 	}
-	if content.Len() > 0 {
-		r.conv.AddAssistant(content.String())
+	if sr.content != "" {
+		r.conv.AddAssistant(sr.content)
 	}
-	_ = msg
 }
 
 // ApproveCommand prompts the user for Y/n confirmation of a dangerous command.

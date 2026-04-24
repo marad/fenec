@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/marad/fenec/internal/model"
 )
@@ -22,15 +23,29 @@ type ShellResult struct {
 	TimedOut bool   `json:"timed_out,omitempty"`
 }
 
+// truncateUTF8 truncates s to at most maxBytes while ensuring the result
+// is valid UTF-8 (never cuts mid-rune).
+func truncateUTF8(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	// Walk backwards from maxBytes to find a valid rune boundary.
+	for maxBytes > 0 && !utf8.RuneStart(s[maxBytes]) {
+		maxBytes--
+	}
+	return s[:maxBytes]
+}
+
 // ToJSON marshals the result to JSON, truncating stdout and stderr if needed.
+// Truncation is rune-safe to avoid producing invalid UTF-8 in JSON output.
 func (r *ShellResult) ToJSON() string {
 	// Work on a copy to avoid mutating the receiver.
 	out := *r
 	if len(out.Stdout) > maxOutput {
-		out.Stdout = out.Stdout[:maxOutput] + "\n... (truncated)"
+		out.Stdout = truncateUTF8(out.Stdout, maxOutput) + "\n... (truncated)"
 	}
 	if len(out.Stderr) > maxOutput {
-		out.Stderr = out.Stderr[:maxOutput] + "\n... (truncated)"
+		out.Stderr = truncateUTF8(out.Stderr, maxOutput) + "\n... (truncated)"
 	}
 	b, _ := json.Marshal(out)
 	return string(b)

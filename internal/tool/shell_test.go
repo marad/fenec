@@ -136,3 +136,45 @@ func TestShellExecMissingCommand(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required argument: command")
 }
+
+// === Tests for rune-safe truncation (L-2) ===
+
+func TestTruncateUTF8_ascii(t *testing.T) {
+	result := truncateUTF8("hello world", 5)
+	assert.Equal(t, "hello", result)
+}
+
+func TestTruncateUTF8_no_truncation_needed(t *testing.T) {
+	result := truncateUTF8("short", 100)
+	assert.Equal(t, "short", result)
+}
+
+func TestTruncateUTF8_mid_rune(t *testing.T) {
+	// "ö" is 2 bytes in UTF-8 (0xC3 0xB6). Cutting after 1st byte is invalid.
+	s := "aöb" // 4 bytes: 'a'(1) + 'ö'(2) + 'b'(1)
+	result := truncateUTF8(s, 2)
+	// Should cut back to "a" (1 byte) since byte 2 is mid-rune
+	assert.Equal(t, "a", result)
+}
+
+func TestTruncateUTF8_emoji(t *testing.T) {
+	// "🎉" is 4 bytes in UTF-8. Cutting at byte 2 should produce empty or prior chars.
+	s := "🎉x"
+	result := truncateUTF8(s, 2)
+	// Bytes 0-3 are the emoji, byte 2 is mid-rune, so truncation walks back to 0
+	assert.Equal(t, "", result)
+}
+
+func TestShellResultTruncation_UTF8(t *testing.T) {
+	// Build output that ends with multi-byte chars near the truncation boundary
+	prefix := strings.Repeat("x", maxOutput-2)
+	// Append a 3-byte UTF-8 char that would be split if truncated naively
+	longOutput := prefix + "€€€" // € is 3 bytes (0xE2 0x82 0xAC)
+	sr := ShellResult{Stdout: longOutput, ExitCode: 0}
+	jsonStr := sr.ToJSON()
+
+	// Must produce valid JSON (would fail if mid-rune bytes appear)
+	var parsed ShellResult
+	require.NoError(t, json.Unmarshal([]byte(jsonStr), &parsed))
+	assert.True(t, strings.HasSuffix(parsed.Stdout, "... (truncated)"))
+}

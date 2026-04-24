@@ -84,11 +84,13 @@ func (ct *ContextTracker) TruncateOldest(conv *Conversation) int {
 			removeCount = 2
 		}
 
-		totalBefore := len(conv.Messages) + removeCount // message count before removal (for ratio)
+		totalBefore := len(conv.Messages) // message count before removal (for ratio)
 		conv.Messages = append(conv.Messages[:start], conv.Messages[start+removeCount:]...)
 		removed += removeCount
 
-		// Estimate reduction proportionally
+		// Estimate reduction proportionally.
+		// This is intentionally coarse — the actual token count will be
+		// corrected by the next PromptEvalCount from the provider.
 		if totalBefore > 0 {
 			currentTokens = currentTokens * len(conv.Messages) / totalBefore
 		}
