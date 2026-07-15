@@ -38,6 +38,10 @@ default_model = "gpt-4o"
 	assert.Equal(t, "gemma4", cfg.DefaultModel)
 	assert.Len(t, cfg.Providers, 2)
 
+	// num_ctx omitted from the file falls back to the default, so upgrading an
+	// old config never leaves the truncation invariant with a zero window.
+	assert.Equal(t, DefaultNumCtx, cfg.NumCtx)
+
 	ollamaCfg, ok := cfg.Providers["ollama"]
 	require.True(t, ok)
 	assert.Equal(t, "ollama", ollamaCfg.Type)
@@ -133,7 +137,9 @@ func TestResolveContextWindow(t *testing.T) {
 		wantClamped      bool
 	}{
 		{
-			name: "unset means provider default and no truncation",
+			// Defensive: config defaulting keeps num_ctx > 0, but the pure
+			// function must still pass a zero window through without a floor.
+			name: "zero window passes through",
 		},
 		{
 			name: "default window, budget follows window",

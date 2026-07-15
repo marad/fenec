@@ -394,13 +394,14 @@ func TestHandleModelCommandProviderModel(t *testing.T) {
 // hardware budget owned by config, not derived from the model — otherwise a
 // switch would silently reintroduce a huge KV cache and slow generation.
 func TestHandleModelCommandKeepsNumCtx(t *testing.T) {
-	// New model reports a huge native context; it must NOT leak into num_ctx.
-	bigMock := &mockProvider{name: "ollama", models: []string{"gemma4", "big"}, ctxLen: 131072}
+	// The switch no longer queries the model's native context, so num_ctx cannot
+	// be inflated by it — the configured budget must survive the switch.
+	mock := &mockProvider{name: "ollama", models: []string{"gemma4", "big"}}
 
 	registry := config.NewProviderRegistry()
-	registry.Register("ollama", bigMock)
+	registry.Register("ollama", mock)
 
-	r, _ := newTestREPL(t, bigMock, registry, "ollama", "gemma4")
+	r, _ := newTestREPL(t, mock, registry, "ollama", "gemma4")
 	r.numCtx = 8192
 	r.conv.ContextLength = 8192
 

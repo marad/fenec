@@ -52,6 +52,10 @@ func ResolveContextWindow(numCtx, maxContextLength, nativeCtx int) (window, trun
 	return
 }
 
+// DefaultNumCtx is the context window (num_ctx) used when config omits it.
+// Sized to stay within a typical consumer GPU's VRAM for small local models.
+const DefaultNumCtx = 8192
+
 // ProviderConfig represents the configuration for a single provider.
 type ProviderConfig struct {
 	Type         string `toml:"type"`
@@ -74,6 +78,12 @@ func LoadConfig(path string) (*Config, error) {
 		for _, key := range undecoded {
 			slog.Warn("unknown config key", "key", key)
 		}
+	}
+
+	// num_ctx must be concrete: the truncation invariant needs a known window,
+	// and TOML cannot distinguish an omitted key from an explicit 0.
+	if cfg.NumCtx <= 0 {
+		cfg.NumCtx = DefaultNumCtx
 	}
 
 	resolveEnvVars(&cfg)
@@ -106,7 +116,7 @@ func resolveEnvVars(cfg *Config) {
 func DefaultConfig() *Config {
 	return &Config{
 		DefaultProvider: "ollama",
-		NumCtx:          8192,
+		NumCtx:          DefaultNumCtx,
 		Providers: map[string]ProviderConfig{
 			"ollama": {
 				Type: "ollama",
@@ -131,7 +141,7 @@ func WriteDefaultConfig(path string) error {
 
 # Model context window sent to the provider (num_ctx). Larger values allocate a
 # bigger KV cache — keep it within your GPU's VRAM or generation slows down as
-# layers spill onto the CPU. 0 lets the provider pick its own default.
+# layers spill onto the CPU. Omitting it (or 0) falls back to 8192.
 num_ctx = 8192
 
 # Token budget at which old messages are truncated. 0 means "use the full
