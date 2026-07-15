@@ -261,19 +261,21 @@ Flags:
 		}
 	}
 
-	// Query model's context window size.
-	ctxLen, err := p.GetContextLength(ctx, defaultModel)
-	if err != nil {
-		// Non-fatal: use fallback.
-		ctxLen = 4096
+	// Resolve the context window (num_ctx) and truncation budget. num_ctx sizes
+	// the provider's KV cache — an oversized value spills onto the CPU and slows
+	// generation — so it is a config knob separate from the truncation budget.
+	nativeCtx, ctxErr := p.GetContextLength(ctx, defaultModel)
+	if ctxErr != nil {
+		nativeCtx = 0 // Unknown: skip the native clamp.
 	}
-	// Cap context length if configured.
-	if cfg.MaxContextLength > 0 && ctxLen > cfg.MaxContextLength {
-		ctxLen = cfg.MaxContextLength
+	numCtx, truncBudget, clampedBudget := config.ResolveContextWindow(cfg.NumCtx, cfg.MaxContextLength, nativeCtx)
+	if clampedBudget {
+		slog.Warn("max_context_length exceeds num_ctx; clamping truncation budget to num_ctx",
+			"max_context_length", cfg.MaxContextLength, "num_ctx", numCtx)
 	}
 
 	// Create context tracker (85% threshold triggers truncation).
-	tracker := chat.NewContextTracker(ctxLen, 0.85)
+	tracker := chat.NewContextTracker(truncBudget, 0.85)
 
 	// Create session store.
 	sessDir, err := config.SessionDir()
@@ -370,7 +372,7 @@ Flags:
 	}
 
 	// Create and run REPL.
-	r, err := repl.NewREPL(p, defaultModel, activeProviderName, systemPrompt, tracker, store, toolRegistry, providerRegistry)
+	r, err := repl.NewREPL(p, defaultModel, activeProviderName, systemPrompt, tracker, numCtx, store, toolRegistry, providerRegistry)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, render.FormatError(
 			fmt.Sprintf("Failed to start REPL: %v", err)))

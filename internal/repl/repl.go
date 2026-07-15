@@ -36,6 +36,7 @@ type REPL struct {
 	cancelFn         context.CancelFunc   // For cancelling active generation via Ctrl+C
 	sigCh            chan os.Signal        // SIGINT channel for cleanup
 	tracker          *chat.ContextTracker // Context window tracking
+	numCtx           int                  // Model context window (num_ctx) sent to the provider
 	store            *session.Store       // Session persistence
 	session          *session.Session     // Current session
 	autoSaved        sync.Once            // Ensures auto-save runs only once
@@ -45,7 +46,7 @@ type REPL struct {
 }
 
 // NewREPL creates a REPL connected to the given chat service.
-func NewREPL(p provider.Provider, model string, activeProvider string, systemPrompt string, tracker *chat.ContextTracker, store *session.Store, toolRegistry *tool.Registry, providerRegistry *config.ProviderRegistry) (*REPL, error) {
+func NewREPL(p provider.Provider, model string, activeProvider string, systemPrompt string, tracker *chat.ContextTracker, numCtx int, store *session.Store, toolRegistry *tool.Registry, providerRegistry *config.ProviderRegistry) (*REPL, error) {
 	historyFile, err := config.HistoryFile()
 	if err != nil {
 		// Non-fatal: proceed without history.
@@ -76,10 +77,9 @@ func NewREPL(p provider.Provider, model string, activeProvider string, systemPro
 
 	conv := chat.NewConversation(model, systemPrompt)
 
-	// Set context length from tracker if available.
-	if tracker != nil {
-		conv.ContextLength = tracker.Available()
-	}
+	// The context window (num_ctx) is a config-owned budget, independent of the
+	// truncation tracker — see config.ResolveContextWindow.
+	conv.ContextLength = numCtx
 
 	sess := session.NewSession(model)
 
@@ -91,6 +91,7 @@ func NewREPL(p provider.Provider, model string, activeProvider string, systemPro
 		rl:               rl,
 		sigCh:            make(chan os.Signal, 1),
 		tracker:          tracker,
+		numCtx:           numCtx,
 		store:            store,
 		session:          sess,
 		registry:         toolRegistry,
@@ -598,12 +599,9 @@ func (r *REPL) handleModelCommand(args []string) {
 		r.activeProvider = providerName
 		r.conv.SetModel(modelName)
 
-		// Update context length from new provider (5s timeout matches listModels convention).
-		ctxTimeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if ctxLen, err := newProvider.GetContextLength(ctxTimeout, modelName); err == nil && ctxLen > 0 {
-			r.conv.ContextLength = ctxLen
-		}
+		// num_ctx is a config-owned budget, not derived from the model, so it
+		// stays fixed across switches (see config.ResolveContextWindow).
+		r.conv.ContextLength = r.numCtx
 
 		r.rl.SetPrompt(render.FormatPrompt(modelName))
 		fmt.Fprintf(r.rl.Stdout(), "Switched to %s/%s\n", providerName, modelName)
@@ -612,12 +610,9 @@ func (r *REPL) handleModelCommand(args []string) {
 		modelName := target
 		r.conv.SetModel(modelName)
 
-		// Update context length from current provider (5s timeout matches listModels convention).
-		ctxTimeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if ctxLen, err := r.provider.GetContextLength(ctxTimeout, modelName); err == nil && ctxLen > 0 {
-			r.conv.ContextLength = ctxLen
-		}
+		// num_ctx is a config-owned budget, not derived from the model, so it
+		// stays fixed across switches (see config.ResolveContextWindow).
+		r.conv.ContextLength = r.numCtx
 
 		r.rl.SetPrompt(render.FormatPrompt(modelName))
 		fmt.Fprintf(r.rl.Stdout(), "Switched to %s\n", modelName)
@@ -692,12 +687,7 @@ func (r *REPL) handleClearCommand() {
 
 	// Capture flags that must survive the reset (Pitfall 1, Pitfall 3).
 	thinkEnabled := r.conv.Think
-	var contextLength int
-	if r.tracker != nil {
-		contextLength = r.tracker.Available()
-	} else {
-		contextLength = r.conv.ContextLength
-	}
+	contextLength := r.numCtx
 
 	// Step 2: Build full system prompt with tool descriptions (CONV-03).
 	systemPrompt := r.baseSystemPrompt

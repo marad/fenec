@@ -18,8 +18,38 @@ import (
 type Config struct {
 	DefaultProvider  string                    `toml:"default_provider"`
 	DefaultModel     string                    `toml:"default_model"`
+	NumCtx           int                       `toml:"num_ctx"`
 	MaxContextLength int                       `toml:"max_context_length"`
 	Providers        map[string]ProviderConfig `toml:"providers"`
+}
+
+// ResolveContextWindow computes the model context window (num_ctx) to request
+// from the provider and the truncation budget for the context tracker.
+//
+// num_ctx sizes the provider's KV cache and is therefore a hardware/speed knob,
+// independent of the truncation budget. nativeCtx is the model's native context
+// length (<= 0 means unknown); the window is clamped to it so we never request
+// more than the model supports.
+//
+// It enforces the invariant that the truncation budget never exceeds the
+// window — otherwise the tracker would let a conversation overflow the model's
+// window before truncating. A truncBudget of 0 defaults to the full window.
+// clampedBudget reports whether an explicit max_context_length was reduced to
+// satisfy the invariant, so the caller can warn.
+func ResolveContextWindow(numCtx, maxContextLength, nativeCtx int) (window, truncBudget int, clampedBudget bool) {
+	window = numCtx
+	if window > 0 && nativeCtx > 0 && window > nativeCtx {
+		window = nativeCtx
+	}
+
+	truncBudget = maxContextLength
+	if truncBudget <= 0 {
+		truncBudget = window
+	} else if window > 0 && truncBudget > window {
+		truncBudget = window
+		clampedBudget = true
+	}
+	return
 }
 
 // ProviderConfig represents the configuration for a single provider.
@@ -75,8 +105,8 @@ func resolveEnvVars(cfg *Config) {
 // provider at localhost:11434.
 func DefaultConfig() *Config {
 	return &Config{
-		DefaultProvider:  "ollama",
-		MaxContextLength: 65536,
+		DefaultProvider: "ollama",
+		NumCtx:          8192,
 		Providers: map[string]ProviderConfig{
 			"ollama": {
 				Type: "ollama",
@@ -98,7 +128,15 @@ func WriteDefaultConfig(path string) error {
 	}
 
 	defaultTOML := `default_provider = "ollama"
-max_context_length = 65536
+
+# Model context window sent to the provider (num_ctx). Larger values allocate a
+# bigger KV cache — keep it within your GPU's VRAM or generation slows down as
+# layers spill onto the CPU. 0 lets the provider pick its own default.
+num_ctx = 8192
+
+# Token budget at which old messages are truncated. 0 means "use the full
+# num_ctx window". Must not exceed num_ctx (it is clamped down if it does).
+# max_context_length = 0
 
 [providers.ollama]
 type = "ollama"
