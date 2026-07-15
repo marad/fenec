@@ -144,6 +144,7 @@ func TestHandleClearCommandSavesAndResets(t *testing.T) {
 	r.session = session.NewSession("gemma4")
 	r.tracker = chat.NewContextTracker(8192, 0.85)
 	r.tracker.Update(500, 100)
+	r.numCtx = 8192
 	r.baseSystemPrompt = "You are helpful."
 
 	// Populate conversation with user content so HasContent() returns true.
@@ -386,6 +387,28 @@ func TestHandleModelCommandProviderModel(t *testing.T) {
 		"conv.Model should switch to gpt-4")
 	assert.Contains(t, output, "Switched to openai/gpt-4",
 		"output should confirm the switch with full provider/model name")
+}
+
+// TestHandleModelCommandKeepsNumCtx verifies that switching models does not
+// inflate the context window to the new model's native size. num_ctx is a
+// hardware budget owned by config, not derived from the model — otherwise a
+// switch would silently reintroduce a huge KV cache and slow generation.
+func TestHandleModelCommandKeepsNumCtx(t *testing.T) {
+	// New model reports a huge native context; it must NOT leak into num_ctx.
+	bigMock := &mockProvider{name: "ollama", models: []string{"gemma4", "big"}, ctxLen: 131072}
+
+	registry := config.NewProviderRegistry()
+	registry.Register("ollama", bigMock)
+
+	r, _ := newTestREPL(t, bigMock, registry, "ollama", "gemma4")
+	r.numCtx = 8192
+	r.conv.ContextLength = 8192
+
+	r.handleModelCommand([]string{"big"})
+
+	assert.Equal(t, "big", r.conv.Model, "model should switch")
+	assert.Equal(t, 8192, r.conv.ContextLength,
+		"num_ctx must stay the configured budget, not the model's native context")
 }
 
 // TestHandleModelCommandUnknownProvider verifies that an unrecognised provider

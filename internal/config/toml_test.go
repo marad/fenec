@@ -115,6 +115,55 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "ollama", ollama.Type)
 	assert.Equal(t, "http://localhost:11434", ollama.URL)
+
+	// num_ctx defaults to a GPU-friendly window; the truncation budget defaults
+	// to 0, meaning "track against the full num_ctx window".
+	assert.Equal(t, 8192, cfg.NumCtx)
+	assert.Equal(t, 0, cfg.MaxContextLength)
+}
+
+func TestResolveContextWindow(t *testing.T) {
+	tests := []struct {
+		name             string
+		numCtx           int
+		maxContextLength int
+		nativeCtx        int
+		wantWindow       int
+		wantTruncBudget  int
+		wantClamped      bool
+	}{
+		{
+			name: "unset means provider default and no truncation",
+		},
+		{
+			name: "default window, budget follows window",
+			numCtx: 8192, wantWindow: 8192, wantTruncBudget: 8192,
+		},
+		{
+			name:   "native larger than window: no clamp",
+			numCtx: 8192, nativeCtx: 32768, wantWindow: 8192, wantTruncBudget: 8192,
+		},
+		{
+			name:   "native smaller than window: clamp window down",
+			numCtx: 8192, nativeCtx: 4096, wantWindow: 4096, wantTruncBudget: 4096,
+		},
+		{
+			name:   "budget above window is clamped to window",
+			numCtx: 8192, maxContextLength: 65536, wantWindow: 8192, wantTruncBudget: 8192, wantClamped: true,
+		},
+		{
+			name:   "explicit smaller budget is respected",
+			numCtx: 32768, maxContextLength: 16384, wantWindow: 32768, wantTruncBudget: 16384,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			window, truncBudget, clamped := ResolveContextWindow(tt.numCtx, tt.maxContextLength, tt.nativeCtx)
+			assert.Equal(t, tt.wantWindow, window, "window")
+			assert.Equal(t, tt.wantTruncBudget, truncBudget, "truncBudget")
+			assert.Equal(t, tt.wantClamped, clamped, "clampedBudget")
+		})
+	}
 }
 
 func TestWriteDefaultConfig(t *testing.T) {
@@ -129,6 +178,7 @@ func TestWriteDefaultConfig(t *testing.T) {
 
 	content := string(data)
 	assert.Contains(t, content, `default_provider = "ollama"`)
+	assert.Contains(t, content, `num_ctx = 8192`)
 	assert.Contains(t, content, `[providers.ollama]`)
 	assert.Contains(t, content, `type = "ollama"`)
 	assert.Contains(t, content, `url = "http://localhost:11434"`)
